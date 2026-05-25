@@ -1,0 +1,24 @@
+@import './base.css';
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html, body, #root {
+    @apply m-0 p-0 h-full;
+  }
+  body {
+    @apply text-foreground;
+  }
+}
+
+#app-header {
+  @apply h-[82px] shrink-0 text-[var(--app-text)];
+  background: var(--app-header-bg);
+  -webkit-app-region: drag;
+}
+
+#app-content {
+  @apply flex-1 overflow-y-auto;
+  background: var(--app-bg);
+}
