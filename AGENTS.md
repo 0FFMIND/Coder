@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Interview Coder CN** (编码面试解题助手) is a desktop application that captures screenshots of coding problems and uses AI (vision models) to generate solutions in real-time. The window is invisible to screen-sharing software, making it suitable for use during coding interviews and online assessments.
+**Interview Coder CN** is a desktop application that captures screenshots of coding problems and uses AI (vision models) to generate solutions in real-time. The window is invisible to screen-sharing software, making it suitable for use during coding interviews and online assessments.
 
 Key capabilities:
 
@@ -253,7 +253,7 @@ foreach ($procId in $processIds) {
 }
 ```
 
-2. Start the app in the background and append logs to `electron-dev.log`:
+1. Start the app in the background and append logs to `electron-dev.log`:
 
 ```powershell
 $project = 'C:\Users\ALIENWARE\Downloads\interview-coder-cn-main\interview-coder-cn-main'
@@ -297,17 +297,11 @@ These are read by dotenv in the main process and merged with renderer-side setti
 ## Important Notes for AI Agents
 
 1. **Three TypeScript configs**: `tsconfig.node.json` (main + preload), `tsconfig.web.json` (renderer). The root `tsconfig.json` is a project references file only.
-
-2. **`prompts.md` is bundled**: It lives in `src/main/` but gets copied to the build output via `vite-plugin-static-copy`. Loaded at runtime with `readFileSync(join(import.meta.dirname, 'prompts.md'))`.
-
+2. **`prompts.md`** **is bundled**: It lives in `src/main/` but gets copied to the build output via `vite-plugin-static-copy`. Loaded at runtime with `readFileSync(join(import.meta.dirname, 'prompts.md'))`.
 3. **`global.mainWindow`**: The main window reference is stored as a global variable, declared in `src/main/index.d.ts`.
-
 4. **Settings flow**: `.env` → main process `settings` object → renderer reads on mount via IPC → renderer persists to localStorage via Zustand. Renderer-side changes are sent back to main via `updateAppSettings`.
-
 5. **No shared types directory**: Main process types (`AppSettings`, `AppState`) are imported directly by the preload script from `../main/settings` and `../main/state`. This works because preload shares the Node.js tsconfig.
-
-6. **Streaming orchestration is in `shortcuts.ts`**: Despite the filename, this 580+ line file is the central orchestrator for both global shortcuts AND AI streaming logic. It manages conversation history, abort controllers, and IPC communication for the entire AI workflow.
-
+6. **Streaming orchestration is in** **`shortcuts.ts`**: Despite the filename, this 580+ line file is the central orchestrator for both global shortcuts AND AI streaming logic. It manages conversation history, abort controllers, and IPC communication for the entire AI workflow.
 7. **Window movement**: The window can be moved via keyboard shortcuts in 200px steps (up/down/left/right).
-
 8. **macOS auto-update is disabled**: `publish: null` in electron-builder.yml for mac target. Auto-update only works on Windows.
+
