@@ -25,6 +25,16 @@ function extractErrorMessage(error: unknown): string {
     return String(error) || '未知错误'
   }
 
+  // Handle model call failed with no content (finishReason: unknown)
+  if (error.message.includes('调用失败，未返回任何内容')) {
+    return error.message
+  }
+
+  // Handle timeout errors
+  if (error.message.includes('没有返回任何文本')) {
+    return error.message
+  }
+
   // Try to extract responseBody from AI SDK errors
   const apiError = error as Error & {
     responseBody?: string
@@ -48,6 +58,28 @@ function extractErrorMessage(error: unknown): string {
         return apiError.responseBody
       }
     }
+  }
+
+  // Handle common error types
+  const status = apiError.statusCode
+  if (status === 401 || status === 403) {
+    return 'API 密钥无效或权限不足，请检查设置。'
+  }
+  if (status === 404) {
+    return '模型不存在或 API 地址错误，请检查模型名称和 API 配置。'
+  }
+  if (status === 429) {
+    return '请求过于频繁，请稍后重试。'
+  }
+  if (status && status >= 500) {
+    return '服务器错误，请稍后重试。'
+  }
+
+  // Handle image/vision unsupported errors
+  if (error.message.toLowerCase().includes('image') || 
+      error.message.toLowerCase().includes('vision') ||
+      error.message.toLowerCase().includes('不支持')) {
+    return '当前模型可能不支持图片输入，请切换到支持视觉的模型。'
   }
 
   // Fallback to error message
@@ -528,6 +560,7 @@ const callbacks: Record<string, () => void> = {
       send('solution-clear', true)
       send('screenshots-updated', recentScreenshots)
       send('screenshot-taken', screenshotData)
+      send('set-last-response-start-index')
       send('ai-loading-start')
 
       originalBaseMessages = [...conversationMessages]
@@ -615,6 +648,7 @@ const callbacks: Record<string, () => void> = {
       send('screenshots-updated', recentScreenshots)
       send('solution-chunk', '\n\n')
       hasAppendSeparator = true
+      send('set-last-response-start-index')
       send('ai-loading-start')
 
       originalBaseMessages = [...conversationMessages]
@@ -823,10 +857,10 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
     send('solution-chunk', '\n\n---\n\n')
   }
 
-  send('ai-loading-start')
-
   // Show the user's question in the solution panel without letting Markdown eat code spacing.
   send('solution-chunk', formatUserQuestionForPanel(question))
+  send('set-last-response-start-index')
+  send('ai-loading-start')
 
   const messagesForRetry: ModelMessage[] = isNewConversation
     ? [...conversationMessages]
@@ -902,8 +936,9 @@ ipcMain.handle('sendNewQuestion', async (_event, question: string) => {
     }
   ]
 
-  send('ai-loading-start')
   send('solution-chunk', formatUserQuestionForPanel(question))
+  send('set-last-response-start-index')
+  send('ai-loading-start')
 
   originalBaseMessages = [...conversationMessages]
 
@@ -964,8 +999,9 @@ ipcMain.handle('resendWithNewModel', async () => {
 
   hasAppendSeparator = false
 
-  send('solution-clear', false)
+  send('solution-clear-last-response')
   send('screenshots-updated', recentScreenshots)
+  send('set-last-response-start-index')
   send('ai-loading-start')
 
   const base = originalBaseMessages.length > 0 ? originalBaseMessages : lastBaseConversationMessages
@@ -989,7 +1025,6 @@ ipcMain.handle('resendWithNewModel', async () => {
   if (isLatest) {
     conversationMessages = finalMessages
     lastBaseConversationMessages = [...conversationMessages]
-    originalBaseMessages = [...conversationMessages]
 
     if (!wasAborted && assistantResponse) {
       conversationMessages.push({

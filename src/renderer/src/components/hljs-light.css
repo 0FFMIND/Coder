@@ -2,6 +2,11 @@
   background: transparent;
 }
 
+.hljs-addition,
+.hljs-deletion {
+  background-color: transparent;
+}
+
 [data-theme='light'] .hljs {
   color: #24292e;
   background: transparent;

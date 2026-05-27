@@ -10,7 +10,9 @@ export default function SolutionManager() {
     addSolutionChunk,
     setErrorMessage,
     clearSolution,
-    setRecentScreenshots
+    setRecentScreenshots,
+    setLastResponseStartIndex,
+    clearLastResponse
   } = useSolutionStore()
 
   useEffect(() => {
@@ -26,6 +28,12 @@ export default function SolutionManager() {
         setRecentScreenshots([])
         setScreenshotData(null)
       }
+    })
+    window.api.onSolutionClearLastResponse(() => {
+      clearLastResponse()
+    })
+    window.api.onSetLastResponseStartIndex(() => {
+      setLastResponseStartIndex(useSolutionStore.getState().solutionChunks.length)
     })
     window.api.onSolutionChunk((chunk: string) => {
       addSolutionChunk(chunk)
@@ -44,11 +52,15 @@ export default function SolutionManager() {
       window.api.removeAiLoadingStartListener()
       window.api.removeAiLoadingEndListener()
       window.api.removeSolutionClearListener()
+      window.api.removeSolutionClearLastResponseListener()
+      window.api.removeSetLastResponseStartIndexListener()
     }
   }, [
     setScreenshotData,
     setRecentScreenshots,
     clearSolution,
+    clearLastResponse,
+    setLastResponseStartIndex,
     setIsLoading,
     addSolutionChunk,
     setErrorMessage

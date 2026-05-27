@@ -20,6 +20,9 @@ interface Settings {
   dashscopeApiKey: string
   defaultAudioDeviceId: string
   transcriptionAutoSubmitSeconds: number
+
+  zenmuxApiKey: string
+  zenmuxBaseURL: string
 }
 
 interface SettingsStore extends Settings {
@@ -68,7 +71,10 @@ const defaultSettings: Settings = {
 
   dashscopeApiKey: '',
   defaultAudioDeviceId: '',
-  transcriptionAutoSubmitSeconds: 5
+  transcriptionAutoSubmitSeconds: 5,
+
+  zenmuxApiKey: '',
+  zenmuxBaseURL: ''
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -84,13 +90,15 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'interview-coder-settings',
-      version: 12,
+      version: 13,
       migrate: (state) => ({
         ...(state as Settings),
         theme: (state as Partial<Settings>).theme || 'dark',
         autoTheme: (state as Partial<Settings>).autoTheme || false,
         model: normalizeScreenshotModel((state as Partial<Settings>).model),
-        activePromptPresetId: (state as Partial<Settings>).activePromptPresetId || 'new-lc'
+        activePromptPresetId: (state as Partial<Settings>).activePromptPresetId || 'new-lc',
+        zenmuxApiKey: (state as Partial<Settings>).zenmuxApiKey || '',
+        zenmuxBaseURL: (state as Partial<Settings>).zenmuxBaseURL || ''
       })
     }
   )

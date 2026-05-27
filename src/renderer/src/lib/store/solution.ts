@@ -6,6 +6,7 @@ interface SolutionState {
   screenshotData: string | null
   errorMessage: string | null
   recentScreenshots: string[]
+  lastResponseStartIndex: number
 }
 
 interface SolutionStore extends SolutionState {
@@ -16,6 +17,8 @@ interface SolutionStore extends SolutionState {
   setErrorMessage: (message: string | null) => void
   setRecentScreenshots: (screenshots: string[]) => void
   clearSolution: () => void
+  setLastResponseStartIndex: (index: number) => void
+  clearLastResponse: () => void
 }
 
 const defaultState: SolutionState = {
@@ -23,7 +26,8 @@ const defaultState: SolutionState = {
   solutionChunks: [],
   screenshotData: null,
   errorMessage: null,
-  recentScreenshots: []
+  recentScreenshots: [],
+  lastResponseStartIndex: 0
 }
 
 export const useSolutionStore = create<SolutionStore>()((set) => ({
@@ -49,6 +53,16 @@ export const useSolutionStore = create<SolutionStore>()((set) => ({
     set({ recentScreenshots: screenshots })
   },
   clearSolution: () => {
-    set({ solutionChunks: [], isLoading: false, errorMessage: null })
+    set({ solutionChunks: [], isLoading: false, errorMessage: null, lastResponseStartIndex: 0 })
+  },
+  setLastResponseStartIndex: (index) => {
+    set({ lastResponseStartIndex: index })
+  },
+  clearLastResponse: () => {
+    set((state) => ({
+      solutionChunks: state.solutionChunks.slice(0, state.lastResponseStartIndex),
+      isLoading: false,
+      errorMessage: null
+    }))
   }
 }))

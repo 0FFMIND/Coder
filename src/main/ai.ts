@@ -7,10 +7,9 @@ import { settings, AppSettings } from './settings'
 export const PROMPT_SYSTEM = readFileSync(join(import.meta.dirname, 'prompts.md'), 'utf-8').trim()
 export const OCR_MODEL = 'qwen/qwen3-vl-32b-instruct'
 export const CODER_PIPELINE_MODEL = 'qwen/qwen3-coder'
-export const GLM_4_6V_MODEL = 'z-ai/glm-4.6v'
-export const GLM_5V_TURBO_MODEL = 'z-ai/glm-5v-turbo'
-export const GLM_TURBO_PIPELINE = 'z-ai/glm-turbo'
+export const GPT_5_5_MODEL = 'openai/chat-latest'
 const FIRST_TEXT_TIMEOUT_MS = 25_000
+const GPT_5_5_FIRST_TEXT_TIMEOUT_MS = 60_000
 const THINKING_MODEL_FIRST_TEXT_TIMEOUT_MS = 75_000
 
 const OCR_SYSTEM_PROMPT = `
@@ -47,17 +46,19 @@ function getPrimaryModel(_settings: AppSettings): string {
 
 export function isCoderPipelineModel(model: string) {
   const m = model.toLowerCase()
-  return m === CODER_PIPELINE_MODEL || m === GLM_TURBO_PIPELINE
+  return m === CODER_PIPELINE_MODEL
 }
 
-export function getPipelineOcrModel(model: string): string {
-  if (model.toLowerCase() === GLM_TURBO_PIPELINE) return GLM_4_6V_MODEL
+export function getPipelineOcrModel(_model: string): string {
   return OCR_MODEL
 }
 
 export function getPipelineCoderModel(model: string): string {
-  if (model.toLowerCase() === GLM_TURBO_PIPELINE) return GLM_5V_TURBO_MODEL
   return model
+}
+
+export function isGpt55Model(model: string): boolean {
+  return model.toLowerCase() === GPT_5_5_MODEL
 }
 
 function isUnsupportedModelError(error: unknown): boolean {
@@ -72,6 +73,7 @@ function isUnsupportedModelError(error: unknown): boolean {
 }
 
 function getFirstTextTimeoutMs(modelName: string) {
+  if (isGpt55Model(modelName)) return GPT_5_5_FIRST_TEXT_TIMEOUT_MS
   return /thinking/i.test(modelName) ? THINKING_MODEL_FIRST_TEXT_TIMEOUT_MS : FIRST_TEXT_TIMEOUT_MS
 }
 
@@ -116,18 +118,30 @@ async function* streamWithFallback(
   abortSignal?: AbortSignal
 ): AsyncGenerator<string, void, unknown> {
   const fallbackModel = settings.fallbackModel
+  const useZenmux = isGpt55Model(primaryModel)
+  
   const openai = createOpenAI({
-    baseURL: settings.apiBaseURL,
-    apiKey: settings.apiKey
+    baseURL: useZenmux ? settings.zenmuxBaseURL : settings.apiBaseURL,
+    apiKey: useZenmux ? settings.zenmuxApiKey : settings.apiKey
   })
 
   const tryStream = async (modelName: string) => {
-    return streamText({
+    const streamOptions: Parameters<typeof streamText>[0] = {
       model: openai.chat(modelName),
       system: systemPrompt,
       messages,
       abortSignal
-    })
+    }
+    
+    if (isGpt55Model(modelName)) {
+      streamOptions.providerOptions = {
+        openai: {
+          reasoningEffort: 'medium'
+        }
+      }
+    }
+    
+    return streamText(streamOptions)
   }
 
   let streamEnded = false
@@ -139,6 +153,7 @@ async function* streamWithFallback(
     try {
       console.info(`AI stream started: model=${currentModelName}`)
       let hasText = false
+      let finishReason: string | undefined
       const iterator = currentStream.fullStream[Symbol.asyncIterator]()
       while (true) {
         const { value: part, done } = await nextWithTimeout(
@@ -160,6 +175,7 @@ async function* streamWithFallback(
           throw part.error
         }
         if (part.type === 'finish') {
+          finishReason = part.finishReason
           console.info(`AI stream finished: model=${currentModelName}, reason=${part.finishReason}`)
           console.info(
             `AI stream finish detail: model=${currentModelName}, totalUsage=${safeStringify(
@@ -174,6 +190,13 @@ async function* streamWithFallback(
           )
         }
       }
+
+      if (!hasText && finishReason === 'unknown') {
+        throw new Error(
+          `模型 ${currentModelName} 调用失败，未返回任何内容。请检查模型是否可用或切换到支持的模型。`
+        )
+      }
+
       streamEnded = true
     } catch (error) {
       if (abortSignal?.aborted) throw error

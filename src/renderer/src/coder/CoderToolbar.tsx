@@ -36,9 +36,7 @@ function getCompactLevel(width: number): CompactLevel {
 const quickModels = [
   { value: 'qwen/qwen3-vl-32b-instruct', label: 'Qwen VL' },
   { value: 'qwen/qwen3-coder', label: 'Qwen Coder' },
-  { value: 'z-ai/glm-4.6v', label: 'GLM 4.6V' },
-  { value: 'z-ai/glm-turbo', label: 'GLM Turbo' },
-  { value: 'qwen/qwen3-vl-8b-thinking', label: 'Thk' }
+  { value: 'openai/chat-latest', label: 'GPT-5.5' }
 ]
 
 export function CoderToolbar() {

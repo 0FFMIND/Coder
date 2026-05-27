@@ -41,7 +41,9 @@ export const settings = {
   dashscopeApiKey: process.env.DASHSCOPE_API_KEY || '',
   defaultAudioDeviceId: '',
   transcriptionAutoSubmitSeconds: 5,
-  autoTheme: false
+  autoTheme: false,
+  zenmuxApiKey: process.env.ZENMUX_API_KEY || '',
+  zenmuxBaseURL: process.env.ZENMUX_BASE_URL || 'https://zenmux.ai/api/v1'
 }
 
 export type AppSettings = typeof settings

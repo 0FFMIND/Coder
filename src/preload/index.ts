@@ -152,6 +152,22 @@ const api = {
     ipcRenderer.removeAllListeners('solution-clear')
   },
 
+  // Solution clear last response event (for resending with new model)
+  onSolutionClearLastResponse: (callback: () => void) => {
+    ipcRenderer.on('solution-clear-last-response', callback)
+  },
+  removeSolutionClearLastResponseListener: () => {
+    ipcRenderer.removeAllListeners('solution-clear-last-response')
+  },
+
+  // Set last response start index
+  onSetLastResponseStartIndex: (callback: () => void) => {
+    ipcRenderer.on('set-last-response-start-index', callback)
+  },
+  removeSetLastResponseStartIndexListener: () => {
+    ipcRenderer.removeAllListeners('set-last-response-start-index')
+  },
+
   // Select screenshot save directory
   selectScreenshotDir: () => ipcRenderer.invoke('selectScreenshotDir') as Promise<string | null>,
 

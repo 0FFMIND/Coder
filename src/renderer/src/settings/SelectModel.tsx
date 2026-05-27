@@ -15,11 +15,8 @@ import {
 
 const defaultModels = [
   { value: 'qwen/qwen3-vl-32b-instruct', label: 'Qwen3-VL-32B (qwen/qwen3-vl-32b-instruct)' },
-  { value: 'qwen/qwen3-vl-8b-thinking', label: 'Qwen3-VL-8B (qwen/qwen3-vl-8b-thinking)' },
   { value: 'qwen/qwen3-coder', label: 'Qwen Coder (qwen/qwen3-coder，先 OCR 再解题)' },
-  { value: 'z-ai/glm-4.6v', label: 'GLM 4.6V (z-ai/glm-4.6v，视觉+解题)' },
-  { value: 'z-ai/glm-turbo', label: 'GLM Turbo (先 GLM-4.6V OCR 再 GLM-5V-Turbo 解题)' },
-  { value: 'zai-org/GLM-4.6V', label: 'GLM-4.6V (zai-org/GLM-4.6V)' },
+  { value: 'openai/chat-latest', label: 'OpenAI Chat (openai/chat-latest，使用 ZENMUX API)' },
   { value: 'gpt-5-mini', label: 'GPT-5 Mini (gpt-5-mini)' },
   { value: 'gpt-5.4', label: 'GPT-5.4 (gpt-5.4)' }
 ]
