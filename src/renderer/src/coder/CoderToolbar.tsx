@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageSquarePlus, Mic, MicOff, Send } from 'lucide-react'
+import { MessageSquarePlus, Mic, MicOff, PlusCircle, Send } from 'lucide-react'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
@@ -60,6 +60,9 @@ export function CoderToolbar() {
   const [showFollowUpDialog, setShowFollowUpDialog] = useState(false)
   const [followUpText, setFollowUpText] = useState('')
   const isSendingFollowUpRef = useRef(false)
+  const [showNewQuestionDialog, setShowNewQuestionDialog] = useState(false)
+  const [newQuestionText, setNewQuestionText] = useState('')
+  const isSendingNewQuestionRef = useRef(false)
 
   useEffect(() => {
     const updateCompactLevel = () => {
@@ -204,6 +207,45 @@ export function CoderToolbar() {
     }
   }
 
+  const handleNewQuestionClick = () => {
+    setNewQuestionText('')
+    setShowNewQuestionDialog(true)
+  }
+
+  const handleNewQuestionOpenChange = (open: boolean) => {
+    setShowNewQuestionDialog(open)
+  }
+
+  const handleSendNewQuestion = async () => {
+    const text = newQuestionText.trim()
+    if (!text || isSendingNewQuestionRef.current) return
+    isSendingNewQuestionRef.current = true
+    setShowNewQuestionDialog(false)
+    setNewQuestionText('')
+    try {
+      const result = await window.api.sendNewQuestion(text)
+      if (result && !result.success) {
+        setErrorMessage(`新建提问提交失败：${result.error}`)
+      }
+    } catch (err) {
+      console.error('Failed to send new question:', err)
+      setErrorMessage('新建提问提交失败，请重试')
+    } finally {
+      isSendingNewQuestionRef.current = false
+    }
+  }
+
+  const handleNewQuestionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (!newQuestionText.trim()) {
+        setShowNewQuestionDialog(false)
+        return
+      }
+      void handleSendNewQuestion()
+    }
+  }
+
   return (
     <div
       ref={toolbarRef}
@@ -306,6 +348,17 @@ export function CoderToolbar() {
             'flex items-center gap-1 rounded border border-current py-0.5 text-xs whitespace-nowrap transition-colors hover:bg-[var(--app-toolbar-hover-bg)] hover:text-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] hover:border-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] [-webkit-app-region:no-drag]! shrink-0',
             compactLevel >= 3 ? 'px-1.5' : 'px-2'
           )}
+          onClick={handleNewQuestionClick}
+          title="新建提问（开启全新对话）"
+        >
+          <PlusCircle className="w-3 h-3" />
+          {compactLevel < 2 && <span>新建提问</span>}
+        </button>
+        <button
+          className={cn(
+            'flex items-center gap-1 rounded border border-current py-0.5 text-xs whitespace-nowrap transition-colors hover:bg-[var(--app-toolbar-hover-bg)] hover:text-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] hover:border-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] [-webkit-app-region:no-drag]! shrink-0',
+            compactLevel >= 3 ? 'px-1.5' : 'px-2'
+          )}
           onClick={handleFollowUpClick}
           title="追加提问"
         >
@@ -337,6 +390,40 @@ export function CoderToolbar() {
               size="sm"
               onClick={() => void handleSendFollowUp()}
               disabled={!followUpText.trim() || isSendingFollowUpRef.current}
+            >
+              <Send className="mr-1 h-4 w-4" />
+              发送
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showNewQuestionDialog} onOpenChange={handleNewQuestionOpenChange}>
+        <DialogContent
+          showCloseButton
+          className="max-w-md p-4 gap-3 [-webkit-app-region:no-drag]"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="gap-1">
+            <DialogTitle className="text-base">新建提问</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              将开启一个全新对话，之前的截图和对话历史会被清空。
+            </p>
+          </DialogHeader>
+          <Textarea
+            value={newQuestionText}
+            onChange={(e) => setNewQuestionText(e.target.value)}
+            onKeyDown={handleNewQuestionKeyDown}
+            autoFocus
+            placeholder="输入或粘贴问题，按 Enter 发送，Shift+Enter 换行"
+            className="min-h-[4rem] resize-y"
+          />
+          <DialogFooter className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Enter 发送 · Shift+Enter 换行</span>
+            <Button
+              size="sm"
+              onClick={() => void handleSendNewQuestion()}
+              disabled={!newQuestionText.trim() || isSendingNewQuestionRef.current}
             >
               <Send className="mr-1 h-4 w-4" />
               发送

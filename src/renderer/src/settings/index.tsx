@@ -31,6 +31,7 @@ const iconButtonClass =
 export default function SettingsPage() {
   const {
     theme,
+    autoTheme,
     opacity,
     codeLanguage,
     apiBaseURL,
@@ -309,7 +310,12 @@ export default function SettingsPage() {
                 />
                 <Switch
                   checked={theme === 'dark'}
-                  onCheckedChange={(checked) => updateSetting('theme', checked ? 'dark' : 'light')}
+                  onCheckedChange={(checked) => {
+                    updateSetting('theme', checked ? 'dark' : 'light')
+                    if (autoTheme) {
+                      updateSetting('autoTheme', false)
+                    }
+                  }}
                 />
                 <Moon
                   className={theme === 'light' ? 'h-4 w-4 text-[var(--app-text-muted)]' : 'h-4 w-4'}

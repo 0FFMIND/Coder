@@ -72,6 +72,9 @@ const api = {
   // Send follow-up question
   sendFollowUpQuestion: (question: string) => ipcRenderer.invoke('sendFollowUpQuestion', question),
 
+  // Send a brand new question (starts a fresh conversation)
+  sendNewQuestion: (question: string) => ipcRenderer.invoke('sendNewQuestion', question),
+
   // Resend current conversation with new model
   resendWithNewModel: () => ipcRenderer.invoke('resendWithNewModel'),
 

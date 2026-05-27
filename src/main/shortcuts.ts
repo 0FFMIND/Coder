@@ -69,10 +69,6 @@ function formatUserQuestionForPanel(question: string): string {
   return `**你：**\n\n\`\`\`text\n${escapeCodeFence(trimmedQuestion)}\n\`\`\`\n\n`
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 type Shortcut = {
   action: string
   key: string
@@ -98,6 +94,23 @@ interface StreamContext {
 }
 
 let currentStreamContext: StreamContext | null = null
+let streamGeneration = 0
+function isCurrentGeneration(gen: number): boolean {
+  return streamGeneration === gen
+}
+
+interface GenerationContext {
+  generation: number
+  mainWindow: Electron.BrowserWindow
+}
+
+function createGenerationSender(ctx: GenerationContext) {
+  return (channel: string, ...args: unknown[]) => {
+    if (isCurrentGeneration(ctx.generation) && ctx.mainWindow && !ctx.mainWindow.isDestroyed()) {
+      ctx.mainWindow.webContents.send(channel, ...args)
+    }
+  }
+}
 
 // Conversation history tracking
 let conversationMessages: ModelMessage[] = []
@@ -151,13 +164,15 @@ function toCoderTextMessages(ocrText: string, transcriptionText?: string): Model
 async function convertImagesToText(
   messages: ModelMessage[],
   streamContext: StreamContext,
-  mainWindow: BrowserWindow
+  send: (channel: string, ...args: unknown[]) => void
 ): Promise<string> {
   logCoderPipeline('OCR stage started')
-  mainWindow.webContents.send(
-    'solution-chunk',
-    '[Qwen Coder] 1/2 正在将截图转换为结构化文字...\n\n'
-  )
+  if (!streamContext.controller.signal.aborted) {
+    send(
+      'solution-chunk',
+      '[Qwen Coder] 1/2 正在将截图转换为结构化文字...\n\n'
+    )
+  }
 
   const ocrStream = getScreenshotTextStream(messages, streamContext.controller.signal)
   let ocrText = ''
@@ -168,10 +183,12 @@ async function convertImagesToText(
 
   logCoderPipeline(`OCR stage completed, ${ocrText.length} chars`)
   logCoderPipeline(`OCR text:\n${ocrText}`)
-  mainWindow.webContents.send(
-    'solution-chunk',
-    '[Qwen Coder] OCR 完成，正在交给 qwen/qwen3-coder 生成结果...\n\n'
-  )
+  if (!streamContext.controller.signal.aborted) {
+    send(
+      'solution-chunk',
+      '[Qwen Coder] OCR 完成，正在交给 qwen/qwen3-coder 生成结果...\n\n'
+    )
+  }
   return ocrText
 }
 
@@ -183,7 +200,7 @@ type StreamGetter = (
 type StreamPreprocess = (
   messages: ModelMessage[],
   streamContext: StreamContext,
-  mainWindow: BrowserWindow
+  send: (channel: string, ...args: unknown[]) => void
 ) => Promise<ModelMessage[]>
 
 interface RunSolutionStreamOptions {
@@ -191,19 +208,24 @@ interface RunSolutionStreamOptions {
   mainWindow: BrowserWindow
   preprocess?: StreamPreprocess
   sendLoadingEnd?: boolean
+  generation: number
+  send: (channel: string, ...args: unknown[]) => void
 }
 
 interface RunSolutionStreamResult {
   finalMessages: ModelMessage[]
   assistantResponse: string
   wasAborted: boolean
+  isLatest: boolean
 }
 
 async function runSolutionStream(
   messages: ModelMessage[],
   options: RunSolutionStreamOptions
 ): Promise<RunSolutionStreamResult> {
-  const { streamGetter, mainWindow, preprocess, sendLoadingEnd = true } = options
+  const { streamGetter, mainWindow, preprocess, sendLoadingEnd = true, generation, send } = options
+  const isMyGeneration = () => streamGeneration === generation
+  const sendIfLatest = send
 
   const streamContext: StreamContext = {
     controller: new AbortController(),
@@ -218,7 +240,7 @@ async function runSolutionStream(
 
   try {
     if (preprocess) {
-      finalMessages = await preprocess(messages, streamContext, mainWindow)
+      finalMessages = await preprocess(messages, streamContext, send)
     }
 
     const stream = streamGetter(finalMessages, streamContext.controller.signal)
@@ -231,13 +253,13 @@ async function runSolutionStream(
           break
         }
         assistantResponse += chunk
-        mainWindow.webContents.send('solution-chunk', chunk)
+        sendIfLatest('solution-chunk', chunk)
       }
     } catch (error) {
       if (!streamContext.controller.signal.aborted) {
         endedNaturally = false
         console.error('Error streaming solution:', error)
-        mainWindow.webContents.send('solution-error', extractErrorMessage(error))
+        sendIfLatest('solution-error', extractErrorMessage(error))
       } else {
         endedNaturally = false
       }
@@ -245,40 +267,40 @@ async function runSolutionStream(
 
     if (streamContext.controller.signal.aborted) {
       if (streamContext.reason === 'user') {
-        mainWindow.webContents.send('solution-stopped')
+        sendIfLatest('solution-stopped')
       }
     } else if (endedNaturally) {
       if (!assistantResponse) {
-        mainWindow.webContents.send(
+        sendIfLatest(
           'solution-error',
           'AI 没有返回内容，请检查当前模型是否支持截图输入，或稍后重试。'
         )
       }
-      mainWindow.webContents.send('solution-complete')
+      sendIfLatest('solution-complete')
     }
   } catch (error) {
     if (streamContext.controller.signal.aborted) {
       if (streamContext.reason === 'user') {
-        mainWindow.webContents.send('solution-stopped')
+        sendIfLatest('solution-stopped')
       }
     } else {
       console.error('Error streaming solution:', error)
-      mainWindow.webContents.send('solution-error', extractErrorMessage(error))
+      sendIfLatest('solution-error', extractErrorMessage(error))
     }
   } finally {
     if (currentStreamContext === streamContext) {
       currentStreamContext = null
     }
     if (!streamStarted && streamContext.reason === 'user') {
-      mainWindow.webContents.send('solution-stopped')
+      sendIfLatest('solution-stopped')
     }
     if (sendLoadingEnd && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('ai-loading-end')
+      sendIfLatest('ai-loading-end')
     }
   }
 
   const wasAborted = streamContext.controller.signal.aborted || !endedNaturally
-  return { finalMessages, assistantResponse, wasAborted }
+  return { finalMessages, assistantResponse, wasAborted, isLatest: isMyGeneration() }
 }
 
 const FRONT_REASSERT_DURATION = 8000
@@ -470,14 +492,17 @@ const callbacks: Record<string, () => void> = {
     const mainWindow = global.mainWindow
     if (!mainWindow || mainWindow.isDestroyed() || !prepareCoderAction(mainWindow)) return
 
+    const myGeneration = ++streamGeneration
     abortCurrentStream('new-request')
+    const send = createGenerationSender({ generation: myGeneration, mainWindow })
     const screenshotData = await takeScreenshot()
+    if (!isCurrentGeneration(myGeneration)) return
     if (screenshotData && mainWindow && !mainWindow.isDestroyed()) {
       saveScreenshotToDisk(screenshotData)
       const transcriptionText = getTranscriptionText()
       if (transcriptionText) {
         clearTranscriptionText()
-        mainWindow.webContents.send('transcription-cleared')
+        send('transcription-cleared')
       }
       conversationMessages = [
         {
@@ -500,38 +525,44 @@ const callbacks: Record<string, () => void> = {
 
       recentScreenshots = [screenshotData]
       hasAppendSeparator = false
-      mainWindow.webContents.send('solution-clear', true)
-      mainWindow.webContents.send('screenshots-updated', recentScreenshots)
-      mainWindow.webContents.send('screenshot-taken', screenshotData)
-      mainWindow.webContents.send('ai-loading-start')
+      send('solution-clear', true)
+      send('screenshots-updated', recentScreenshots)
+      send('screenshot-taken', screenshotData)
+      send('ai-loading-start')
 
       originalBaseMessages = [...conversationMessages]
 
-      const { finalMessages, assistantResponse, wasAborted } = await runSolutionStream(conversationMessages, {
+      const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
         streamGetter: (messages, signal) => getSolutionStream(messages, signal),
         mainWindow,
-        preprocess: async (messages, streamContext, win) => {
+        preprocess: async (messages, streamContext, sendCtx) => {
           if (isCoderPipelineModel(settings.model)) {
-            const ocrText = await convertImagesToText(messages, streamContext, win)
+            const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
             return toCoderTextMessages(ocrText, transcriptionText)
           }
           return messages
-        }
+        },
+        generation: myGeneration,
+        send
       })
 
-      conversationMessages = finalMessages
-      lastBaseConversationMessages = [...conversationMessages]
+      if (isLatest) {
+        conversationMessages = finalMessages
+        lastBaseConversationMessages = [...conversationMessages]
 
-      if (!wasAborted && assistantResponse) {
-        conversationMessages.push({
-          role: 'assistant',
-          content: assistantResponse
-        })
-        trimConversationMessages()
-        if (isCoderPipelineModel(settings.model)) {
-          logCoderPipeline(`Coder result:\n${assistantResponse}`)
+        if (!wasAborted && assistantResponse) {
+          conversationMessages.push({
+            role: 'assistant',
+            content: assistantResponse
+          })
+          trimConversationMessages()
+          if (isCoderPipelineModel(settings.model)) {
+            logCoderPipeline(`Coder result:\n${assistantResponse}`)
+          }
         }
       }
+    } else {
+      send('ai-loading-end')
     }
   },
 
@@ -546,15 +577,18 @@ const callbacks: Record<string, () => void> = {
       return
     }
 
+    const myGeneration = ++streamGeneration
     abortCurrentStream('new-request')
+    const send = createGenerationSender({ generation: myGeneration, mainWindow })
 
     const screenshotData = await takeScreenshot()
+    if (!isCurrentGeneration(myGeneration)) return
     if (screenshotData && mainWindow && !mainWindow.isDestroyed()) {
       saveScreenshotToDisk(screenshotData)
       const transcriptionText = getTranscriptionText()
       if (transcriptionText) {
         clearTranscriptionText()
-        mainWindow.webContents.send('transcription-cleared')
+        send('transcription-cleared')
       }
       // Append new image message to conversation
       const newUserMessage: ModelMessage = {
@@ -577,39 +611,45 @@ const callbacks: Record<string, () => void> = {
 
       recentScreenshots.push(screenshotData)
       recentScreenshots = recentScreenshots.slice(-5) // 限5张
-      mainWindow.webContents.send('screenshot-taken', screenshotData)
-      mainWindow.webContents.send('screenshots-updated', recentScreenshots)
-      mainWindow.webContents.send('solution-chunk', '\n\n')
+      send('screenshot-taken', screenshotData)
+      send('screenshots-updated', recentScreenshots)
+      send('solution-chunk', '\n\n')
       hasAppendSeparator = true
-      mainWindow.webContents.send('ai-loading-start')
+      send('ai-loading-start')
 
       originalBaseMessages = [...conversationMessages]
 
-      const { finalMessages, assistantResponse, wasAborted } = await runSolutionStream(conversationMessages, {
+      const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
         streamGetter: (messages, signal) => getGeneralStream(messages, signal),
         mainWindow,
-        preprocess: async (messages, streamContext, win) => {
+        preprocess: async (messages, streamContext, sendCtx) => {
           if (isCoderPipelineModel(settings.model)) {
-            const ocrText = await convertImagesToText(messages, streamContext, win)
+            const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
             return toCoderTextMessages(ocrText, transcriptionText)
           }
           return messages
-        }
+        },
+        generation: myGeneration,
+        send
       })
 
-      conversationMessages = finalMessages
-      lastBaseConversationMessages = [...conversationMessages]
+      if (isLatest) {
+        conversationMessages = finalMessages
+        lastBaseConversationMessages = [...conversationMessages]
 
-      if (!wasAborted && assistantResponse) {
-        conversationMessages.push({
-          role: 'assistant',
-          content: assistantResponse
-        })
-        trimConversationMessages()
-        if (isCoderPipelineModel(settings.model)) {
-          logCoderPipeline(`Coder result:\n${assistantResponse}`)
+        if (!wasAborted && assistantResponse) {
+          conversationMessages.push({
+            role: 'assistant',
+            content: assistantResponse
+          })
+          trimConversationMessages()
+          if (isCoderPipelineModel(settings.model)) {
+            logCoderPipeline(`Coder result:\n${assistantResponse}`)
+          }
         }
       }
+    } else {
+      send('ai-loading-end')
     }
   },
 
@@ -757,21 +797,22 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
     return { success: false, error: 'Invalid state' }
   }
 
+  const myGeneration = ++streamGeneration
+  abortCurrentStream('new-request')
+  const send = createGenerationSender({ generation: myGeneration, mainWindow })
+
   if (!state.inCoderPage) {
     if (!prepareCoderAction(mainWindow)) {
       return { success: false, error: 'Invalid state' }
     }
-    await wait(80)
   } else {
     ensureWindowExpanded()
   }
 
-  abortCurrentStream('new-request')
-
   const isNewConversation = conversationMessages.length === 0
 
   if (isNewConversation) {
-    mainWindow.webContents.send('solution-clear', true)
+    send('solution-clear', true)
     conversationMessages = [
       {
         role: 'user',
@@ -779,13 +820,13 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
       }
     ]
   } else {
-    mainWindow.webContents.send('solution-chunk', '\n\n---\n\n')
+    send('solution-chunk', '\n\n---\n\n')
   }
 
-  mainWindow.webContents.send('ai-loading-start')
+  send('ai-loading-start')
 
   // Show the user's question in the solution panel without letting Markdown eat code spacing.
-  mainWindow.webContents.send('solution-chunk', formatUserQuestionForPanel(question))
+  send('solution-chunk', formatUserQuestionForPanel(question))
 
   const messagesForRetry: ModelMessage[] = isNewConversation
     ? [...conversationMessages]
@@ -799,27 +840,94 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
 
   originalBaseMessages = [...messagesForRetry]
 
-  const { finalMessages, assistantResponse, wasAborted } = await runSolutionStream(conversationMessages, {
+  const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
     streamGetter: (messages, signal) =>
       isNewConversation
         ? getGeneralStream(messages, signal)
         : getFollowUpStream(messages, question, signal),
-    mainWindow
+    mainWindow,
+    generation: myGeneration,
+    send
   })
 
-  lastBaseConversationMessages = [...messagesForRetry]
+  if (isLatest) {
+    lastBaseConversationMessages = [...messagesForRetry]
 
-  if (!wasAborted) {
-    conversationMessages = [...messagesForRetry]
-    if (assistantResponse) {
+    if (!wasAborted) {
+      conversationMessages = [...messagesForRetry]
+      if (assistantResponse) {
+        conversationMessages.push({
+          role: 'assistant',
+          content: assistantResponse
+        })
+        trimConversationMessages()
+      }
+    } else {
+      conversationMessages = isNewConversation ? [] : [...finalMessages]
+    }
+  }
+
+  return { success: true }
+})
+
+ipcMain.handle('sendNewQuestion', async (_event, question: string) => {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed() || !settings.apiKey) {
+    return { success: false, error: 'Invalid state' }
+  }
+
+  const myGeneration = ++streamGeneration
+  abortCurrentStream('new-request')
+  const send = createGenerationSender({ generation: myGeneration, mainWindow })
+
+  if (!state.inCoderPage) {
+    if (!prepareCoderAction(mainWindow)) {
+      return { success: false, error: 'Invalid state' }
+    }
+  } else {
+    ensureWindowExpanded()
+  }
+
+  // Start a brand new conversation: clear history, screenshots, and solution panel.
+  conversationMessages = []
+  lastBaseConversationMessages = []
+  originalBaseMessages = []
+  recentScreenshots = []
+  send('solution-clear', true)
+
+  conversationMessages = [
+    {
+      role: 'user',
+      content: [{ type: 'text', text: question }]
+    }
+  ]
+
+  send('ai-loading-start')
+  send('solution-chunk', formatUserQuestionForPanel(question))
+
+  originalBaseMessages = [...conversationMessages]
+
+  const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(
+    conversationMessages,
+    {
+      streamGetter: (messages, signal) => getGeneralStream(messages, signal),
+      mainWindow,
+      generation: myGeneration,
+      send
+    }
+  )
+
+  if (isLatest) {
+    conversationMessages = finalMessages
+    lastBaseConversationMessages = [...conversationMessages]
+
+    if (!wasAborted && assistantResponse) {
       conversationMessages.push({
         role: 'assistant',
         content: assistantResponse
       })
       trimConversationMessages()
     }
-  } else {
-    conversationMessages = isNewConversation ? [] : [...finalMessages]
   }
 
   return { success: true }
@@ -830,14 +938,19 @@ ipcMain.handle('resendWithNewModel', async () => {
   if (!mainWindow || mainWindow.isDestroyed() || !settings.apiKey) {
     return { success: false, error: 'Invalid state' }
   }
+
+  const myGeneration = ++streamGeneration
+  abortCurrentStream('new-request')
+  const send = createGenerationSender({ generation: myGeneration, mainWindow })
+
   if (!state.inCoderPage) {
     if (!prepareCoderAction(mainWindow)) {
       return { success: false, error: 'Invalid state' }
     }
-    await wait(80)
   } else {
     ensureWindowExpanded()
   }
+
   if (originalBaseMessages.length === 0 && lastBaseConversationMessages.length === 0) {
     return { success: false, error: 'No conversation to resend' }
   }
@@ -849,39 +962,42 @@ ipcMain.handle('resendWithNewModel', async () => {
     )
   }
 
-  abortCurrentStream('new-request')
   hasAppendSeparator = false
 
-  mainWindow.webContents.send('solution-clear', false)
-  mainWindow.webContents.send('screenshots-updated', recentScreenshots)
-  mainWindow.webContents.send('ai-loading-start')
+  send('solution-clear', false)
+  send('screenshots-updated', recentScreenshots)
+  send('ai-loading-start')
 
   const base = originalBaseMessages.length > 0 ? originalBaseMessages : lastBaseConversationMessages
   conversationMessages = [...base]
 
-  const { finalMessages, assistantResponse, wasAborted } = await runSolutionStream(conversationMessages, {
+  const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
     streamGetter: (messages, signal) => getGeneralStream(messages, signal),
     mainWindow,
-    preprocess: async (messages, streamContext, win) => {
+    preprocess: async (messages, streamContext, sendCtx) => {
       if (isCoderPipelineModel(settings.model) && hasImages(messages)) {
         const transcriptionText = getTranscriptionText()
-        const ocrText = await convertImagesToText(messages, streamContext, win)
+        const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
         return toCoderTextMessages(ocrText, transcriptionText)
       }
       return messages
-    }
+    },
+    generation: myGeneration,
+    send
   })
 
-  conversationMessages = finalMessages
-  lastBaseConversationMessages = [...conversationMessages]
-  originalBaseMessages = [...conversationMessages]
+  if (isLatest) {
+    conversationMessages = finalMessages
+    lastBaseConversationMessages = [...conversationMessages]
+    originalBaseMessages = [...conversationMessages]
 
-  if (!wasAborted && assistantResponse) {
-    conversationMessages.push({
-      role: 'assistant',
-      content: assistantResponse
-    })
-    trimConversationMessages()
+    if (!wasAborted && assistantResponse) {
+      conversationMessages.push({
+        role: 'assistant',
+        content: assistantResponse
+      })
+      trimConversationMessages()
+    }
   }
 
   return { success: true }
