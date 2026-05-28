@@ -87,10 +87,14 @@ export function AppHeader({
   return (
     <>
       <div id="app-header" className="flex items-start text-[var(--app-text)]">
-        <div className="actions flex min-w-0 flex-1 items-start overflow-x-hidden overflow-y-visible pt-1 pb-0 pl-4 pr-8">
+        <div
+          className={`actions flex min-w-0 flex-1 items-start overflow-x-hidden overflow-y-visible pt-1 pb-0 ${
+            collapsed ? 'pl-2 pr-1' : 'pl-4 pr-2'
+          }`}
+        >
           <CoderToolbar />
         </div>
-        <div className={`actions shrink-0 ${ignoreMouse ? 'pointer-events-none' : ''}`}>
+        <div className={`actions flex shrink-0 ${ignoreMouse ? 'pointer-events-none' : ''}`}>
           <Button
             variant="ghost"
             className="size-8 cursor-pointer hover:opacity-50 [-webkit-app-region:no-drag]!"

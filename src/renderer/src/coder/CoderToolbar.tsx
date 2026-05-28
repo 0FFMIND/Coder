@@ -255,13 +255,16 @@ export function CoderToolbar() {
             <span className="text-[var(--app-toolbar-label-text)] shrink-0">常用快捷键</span>
           )}
           <ToolbarShortcut
+            compactLevel={compactLevel}
             label={compactLevel >= 2 ? '' : '截图分析'}
             shortcut={shortcuts.takeScreenshot.key}
             onClick={() => window.api.triggerShortcutAction('takeScreenshot')}
           />
           <ToolbarShortcut
+            compactLevel={compactLevel}
             label={compactLevel >= 2 ? '' : '追加截图'}
             shortcut={shortcuts.appendScreenshot.key}
+            hideAlt
             onClick={() => window.api.triggerShortcutAction('appendScreenshot')}
           />
         </div>
@@ -308,7 +311,7 @@ export function CoderToolbar() {
               onClick={() => handleModelChange(m.value)}
               title={m.value}
             >
-              {m.label}
+              {compactLevel > 2 ? getCompactModelLabel(m.label) : m.label}
             </button>
           ))}
         </div>
@@ -327,7 +330,7 @@ export function CoderToolbar() {
             onClick={handleToggleAutoTheme}
             title={autoTheme ? '点击关闭自动变色' : '点击开启自动变色'}
           >
-            <span>auto</span>
+            <span>变色</span>
             {compactLevel < 3 && <span>{autoTheme ? 'on' : 'off'}</span>}
           </button>
         </div>
@@ -350,7 +353,7 @@ export function CoderToolbar() {
           title="新建提问（开启全新对话）"
         >
           <PlusCircle className="w-3 h-3" />
-          {compactLevel < 2 && <span>新建提问</span>}
+          {compactLevel < 2 ? <span>新建提问</span> : <span>新建</span>}
         </button>
         <button
           className={cn(
@@ -361,7 +364,7 @@ export function CoderToolbar() {
           title="追加提问"
         >
           <MessageSquarePlus className="w-3 h-3" />
-          {compactLevel < 2 && <span>追加提问</span>}
+          {compactLevel < 2 ? <span>追加提问</span> : <span>追加</span>}
         </button>
       </div>
 
@@ -499,24 +502,40 @@ function getCompactPresetLabel(label: string) {
   return label
 }
 
+function getCompactModelLabel(label: string) {
+  if (label === 'Qwen VL') return 'VL'
+  if (label === 'Qwen Coder') return 'Coder'
+  return label
+}
+
 function ToolbarShortcut({
+  compactLevel,
   label,
   shortcut,
+  hideAlt,
   onClick
 }: {
+  compactLevel: CompactLevel
   label: string
   shortcut?: string
+  hideAlt?: boolean
   onClick: () => void
 }) {
+  const displayShortcut = hideAlt && shortcut
+    ? shortcut.replace(/Alt\+|CommandOrControl\+/g, '')
+    : shortcut
   return (
     <button
-      className="flex items-center gap-1 shrink-0 rounded border border-current px-2 py-0.5 whitespace-nowrap transition-colors hover:bg-[var(--app-toolbar-hover-bg)] hover:text-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] hover:border-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] [-webkit-app-region:no-drag]!"
+      className={cn(
+        'flex items-center gap-1 shrink-0 rounded border border-current py-0.5 whitespace-nowrap transition-colors hover:bg-[var(--app-toolbar-hover-bg)] hover:text-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] hover:border-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] [-webkit-app-region:no-drag]!',
+        compactLevel >= 2 ? 'px-1' : 'px-2'
+      )}
       onClick={onClick}
     >
       {label && <span>{label}</span>}
-      {shortcut && (
+      {displayShortcut && (
         <ShortcutRenderer
-          shortcut={shortcut}
+          shortcut={displayShortcut}
           variant="inline"
           className="shrink-0 px-1 py-0 text-[11px]"
         />
