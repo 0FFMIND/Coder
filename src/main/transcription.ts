@@ -16,6 +16,14 @@ function sendToRenderer(channel: string, ...args: unknown[]) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, ...args)
   }
+  sendToSubtitleWindow(channel, ...args)
+}
+
+function sendToSubtitleWindow(channel: string, ...args: unknown[]) {
+  const subtitleWindow = global.subtitleWindow
+  if (subtitleWindow && !subtitleWindow.isDestroyed()) {
+    subtitleWindow.webContents.send(channel, ...args)
+  }
 }
 
 function cleanup() {
@@ -58,7 +66,8 @@ function startTranscription(apiKey: string) {
         parameters: {
           format: 'pcm',
           sample_rate: 16000,
-          heartbeat: true
+          heartbeat: true,
+          language_hints: ['en']
         },
         input: {}
       }

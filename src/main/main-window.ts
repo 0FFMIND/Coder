@@ -207,3 +207,43 @@ ipcMain.handle('setWindowHeight', (_event, height: number) => {
 ipcMain.handle('endRendererResize', () => {
   isRendererResizing = false
 })
+
+export function getWindowCollapsed(): boolean {
+  return isWindowCollapsed
+}
+
+export function toggleWindowCollapsed(): boolean {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed()) return isWindowCollapsed
+
+  const nextCollapsed = !isWindowCollapsed
+
+  if (nextCollapsed) {
+    if (!isWindowCollapsed) {
+      expandedWindowBounds = mainWindow.isMaximized()
+        ? mainWindow.getNormalBounds()
+        : mainWindow.getBounds()
+    }
+    isWindowCollapsed = true
+
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    }
+
+    const targetBounds = expandedWindowBounds ?? mainWindow.getBounds()
+    setWindowBoundsSafely(mainWindow, {
+      ...targetBounds,
+      height: COLLAPSED_WINDOW_HEIGHT
+    })
+    sendWindowCollapsedState(true)
+    return true
+  }
+
+  isWindowCollapsed = false
+  const restoreBounds = getExpandedRestoreBounds(mainWindow)
+  if (restoreBounds) {
+    setWindowBoundsSafely(mainWindow, restoreBounds)
+  }
+  sendWindowCollapsedState(false)
+  return false
+}

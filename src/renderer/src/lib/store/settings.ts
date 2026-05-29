@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-interface Settings {
+export interface Settings {
   theme: 'light' | 'dark'
   autoTheme: boolean
   apiBaseURL: string

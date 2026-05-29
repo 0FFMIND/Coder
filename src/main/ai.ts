@@ -119,7 +119,7 @@ async function* streamWithFallback(
 ): AsyncGenerator<string, void, unknown> {
   const fallbackModel = settings.fallbackModel
   const useZenmux = isGpt55Model(primaryModel)
-  
+
   const openai = createOpenAI({
     baseURL: useZenmux ? settings.zenmuxBaseURL : settings.apiBaseURL,
     apiKey: useZenmux ? settings.zenmuxApiKey : settings.apiKey
@@ -132,7 +132,7 @@ async function* streamWithFallback(
       messages,
       abortSignal
     }
-    
+
     if (isGpt55Model(modelName)) {
       streamOptions.providerOptions = {
         openai: {
@@ -140,7 +140,7 @@ async function* streamWithFallback(
         }
       }
     }
-    
+
     return streamText(streamOptions)
   }
 
@@ -206,9 +206,7 @@ async function* streamWithFallback(
         fallbackModel !== primaryModel &&
         isUnsupportedModelError(error)
       ) {
-        console.warn(
-          `Model ${primaryModel} 不可用，自动回退到 ${fallbackModel}`
-        )
+        console.warn(`Model ${primaryModel} 不可用，自动回退到 ${fallbackModel}`)
         fallbackTriggered = true
         currentModelName = fallbackModel
         currentStream = await tryStream(fallbackModel)
@@ -228,7 +226,11 @@ export function getSolutionStream(messages: ModelMessage[], abortSignal?: AbortS
   return streamWithFallback(messages, systemPrompt, getPrimaryModel(settings), abortSignal)
 }
 
-export function getScreenshotTextStream(messages: ModelMessage[], abortSignal?: AbortSignal, ocrModel?: string) {
+export function getScreenshotTextStream(
+  messages: ModelMessage[],
+  abortSignal?: AbortSignal,
+  ocrModel?: string
+) {
   return streamWithFallback(messages, OCR_SYSTEM_PROMPT, ocrModel || OCR_MODEL, abortSignal)
 }
 
@@ -255,12 +257,7 @@ export function getFollowUpStream(
       `\n使用编程语言：${settings.codeLanguage} 解答。`
     : PROMPT_SYSTEM + `\n使用编程语言：${settings.codeLanguage} 解答。`
 
-  return streamWithFallback(
-    updatedMessages,
-    systemPrompt,
-    getPrimaryModel(settings),
-    abortSignal
-  )
+  return streamWithFallback(updatedMessages, systemPrompt, getPrimaryModel(settings), abortSignal)
 }
 
 export function getGeneralStream(messages: ModelMessage[], abortSignal?: AbortSignal) {

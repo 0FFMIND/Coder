@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react'
-import { HashRouter, Routes, Route, useNavigate } from 'react-router'
+import { useEffect, useRef, useState } from 'react'
+import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router'
 import { Toaster } from 'sonner'
 import CoderPage from '@/coder'
 import SettingsPage from '@/settings'
 import HelpPage from '@/help'
+import SubtitlePage from '@/subtitle'
 import { AppHeader } from '@/coder/AppHeader'
 import TranscriptionManager from '@/coder/TranscriptionManager'
 import SolutionManager from '@/coder/SolutionManager'
-import { useSettingsStore } from '@/lib/store/settings'
+import { useSettingsStore, type Settings } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
+import { useAppStore } from '@/lib/store/app'
 import { getCloneableFields } from '@/lib/utils'
 import { getShortcutAccelerator } from '@/lib/utils/keyboard'
 
@@ -31,11 +33,58 @@ function NavigateToCoderListener() {
   return null
 }
 
+function AppContent({
+  collapsed,
+  setCollapsed
+}: {
+  collapsed: boolean
+  setCollapsed: (collapsed: boolean) => void
+}) {
+  const location = useLocation()
+
+  if (location.pathname === '/subtitle') {
+    return <SubtitlePage />
+  }
+
+  return (
+    <>
+      <TranscriptionManager />
+      <SolutionManager />
+      <div className="flex flex-col h-full overflow-hidden">
+        <AppHeader collapsed={collapsed} onCollapsedChange={setCollapsed} />
+        {!collapsed && (
+          <Routes>
+            <Route index element={<CoderPage collapsed={collapsed} />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="help" element={<HelpPage />} />
+            <Route path="subtitle" element={<SubtitlePage />} />
+          </Routes>
+        )}
+      </div>
+    </>
+  )
+}
+
+function AppFrameOverlay() {
+  const location = useLocation()
+  if (location.pathname === '/subtitle') return null
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[9999]">
+      <div className="absolute left-0 right-0 top-0 h-px bg-[var(--app-outer-border)]" />
+      <div className="absolute bottom-0 left-0 top-0 w-px bg-[var(--app-outer-border)]" />
+      <div className="absolute bottom-0 right-0 top-0 w-px bg-[var(--app-outer-border)]" />
+      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--app-outer-border)]" />
+    </div>
+  )
+}
+
 export default function App() {
   const [initialized, setInitialized] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const settingsStore = useSettingsStore()
   const { shortcuts } = useShortcutsStore()
+  const { syncAppState } = useAppStore()
   const { theme, autoTheme, opacity } = settingsStore
 
   useEffect(() => {
@@ -62,6 +111,25 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const handle = (settings: Partial<Settings>) => {
+      const state = useSettingsStore.getState()
+      const changedSettings: Partial<Settings> = {}
+      for (const key of Object.keys(settings) as (keyof Settings)[]) {
+        if (settings[key] !== state[key]) {
+          ;(changedSettings as Record<string, unknown>)[key] = settings[key]
+        }
+      }
+      if (Object.keys(changedSettings).length > 0) {
+        state.syncSettings(changedSettings)
+      }
+    }
+    window.api.onSettingsUpdated(handle)
+    return () => {
+      window.api.removeSettingsUpdatedListener()
+    }
+  }, [])
+
+  useEffect(() => {
     window.api.getAppSettings().then((settings) => {
       const blankFields = Object.keys(settings).filter(
         (key) => settings[key] && !settingsStore[key]
@@ -80,11 +148,30 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const lastSyncedSettingsRef = useRef<Partial<Settings>>({})
+
   useEffect(() => {
-    if (initialized) {
-      window.api.updateAppSettings(getCloneableFields(settingsStore))
-    }
-  }, [initialized, settingsStore])
+    if (!initialized) return
+
+    const unsubscribe = useSettingsStore.subscribe((state) => {
+      const currentSettings = getCloneableFields(state) as Partial<Settings>
+      const lastSettings = lastSyncedSettingsRef.current
+      const changedSettings: Partial<Settings> = {}
+
+      for (const key of Object.keys(currentSettings) as (keyof Settings)[]) {
+        if (currentSettings[key] !== lastSettings[key]) {
+          ;(changedSettings as Record<string, unknown>)[key] = currentSettings[key]
+        }
+      }
+
+      if (Object.keys(changedSettings).length > 0) {
+        lastSyncedSettingsRef.current = { ...lastSettings, ...changedSettings }
+        window.api.updateAppSettings(changedSettings)
+      }
+    })
+
+    return unsubscribe
+  }, [initialized])
 
   useEffect(() => {
     console.log('App initShortcuts:', shortcuts) // DEBUG: 检查新键
@@ -122,28 +209,21 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    window.api.onSyncAppState((state) => {
+      syncAppState(state)
+    })
+    return () => {
+      window.api.removeSyncAppStateListener()
+    }
+  }, [syncAppState])
+
   return (
     <>
       <HashRouter>
         <NavigateToCoderListener />
-        <TranscriptionManager />
-        <SolutionManager />
-        <div className="flex flex-col h-full overflow-hidden">
-          <AppHeader collapsed={collapsed} onCollapsedChange={setCollapsed} />
-          {!collapsed && (
-            <Routes>
-              <Route index element={<CoderPage collapsed={collapsed} />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="help" element={<HelpPage />} />
-            </Routes>
-          )}
-        </div>
-        <div className="pointer-events-none fixed inset-0 z-[9999]">
-          <div className="absolute left-0 right-0 top-0 h-px bg-[var(--app-outer-border)]" />
-          <div className="absolute bottom-0 left-0 top-0 w-px bg-[var(--app-outer-border)]" />
-          <div className="absolute bottom-0 right-0 top-0 w-px bg-[var(--app-outer-border)]" />
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--app-outer-border)]" />
-        </div>
+        <AppContent collapsed={collapsed} setCollapsed={setCollapsed} />
+        <AppFrameOverlay />
       </HashRouter>
 
       <Toaster />

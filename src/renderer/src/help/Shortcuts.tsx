@@ -56,6 +56,7 @@ const getCategoryName = (category: string) => {
 const getShortcutDescription = (action: string) => {
   const descriptionMap: Record<string, string> = {
     hideOrShowMainWindow: '隐藏/显示窗口',
+    toggleWindowCollapsed: '折叠/展开窗口',
     takeScreenshot: '截图并生成解题建议（会新开对话）',
     appendScreenshot: '追加截图并生成解题建议',
     stopSolutionStream: '停止生成',

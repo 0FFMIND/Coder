@@ -171,6 +171,10 @@ const api = {
   // Select screenshot save directory
   selectScreenshotDir: () => ipcRenderer.invoke('selectScreenshotDir') as Promise<string | null>,
 
+  // Subtitle window
+  toggleSubtitleWindow: (open: boolean) =>
+    ipcRenderer.invoke('toggleSubtitleWindow', open) as Promise<boolean>,
+
   // Transcription
   startTranscription: (apiKey: string) => ipcRenderer.invoke('start-transcription', apiKey),
   stopTranscription: () => ipcRenderer.invoke('stop-transcription'),
@@ -229,6 +233,13 @@ const api = {
   },
   removeAutoThemeChangedListener: () => {
     ipcRenderer.removeAllListeners('auto-theme-changed')
+  },
+
+  onSettingsUpdated: (callback: (settings: Partial<AppSettings>) => void) => {
+    ipcRenderer.on('settings-updated', (_event, settings) => callback(settings))
+  },
+  removeSettingsUpdatedListener: () => {
+    ipcRenderer.removeAllListeners('settings-updated')
   }
 }
 

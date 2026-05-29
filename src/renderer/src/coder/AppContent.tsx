@@ -5,13 +5,8 @@ import MarkdownRenderer from '@/components/MarkdownRenderer'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 
 export function AppContent() {
-  const {
-    screenshotData,
-    solutionChunks,
-    errorMessage,
-    recentScreenshots,
-    setErrorMessage
-  } = useSolutionStore()
+  const { screenshotData, solutionChunks, errorMessage, recentScreenshots, setErrorMessage } =
+    useSolutionStore()
   const { isTranscribing, transcriptionText } = useTranscriptionStore()
 
   const hasTranscriptionContent = isTranscribing || transcriptionText.trim().length > 0

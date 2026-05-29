@@ -133,7 +133,6 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </div>
-
           </div>
         </div>
         {/* Transcription Settings */}
@@ -349,10 +348,7 @@ export default function SettingsPage() {
                 <span className="text-xs font-medium tabular-nums">
                   {ignoreMouse ? 'On' : 'Off'}
                 </span>
-                <Switch
-                  checked={ignoreMouse}
-                  onCheckedChange={handleIgnoreMouseToggle}
-                />
+                <Switch checked={ignoreMouse} onCheckedChange={handleIgnoreMouseToggle} />
               </div>
             </div>
           </div>

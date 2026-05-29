@@ -1,5 +1,7 @@
 import 'dotenv/config'
-import { app, BrowserWindow, desktopCapturer, globalShortcut, session } from 'electron'
+import { app, BrowserWindow, desktopCapturer, globalShortcut, session, ipcMain } from 'electron'
+import { createSubtitleWindow, hideSubtitleWindow, showSubtitleWindow } from './subtitle-window'
+import { updateAppState } from './state'
 
 type AbortLikeError = {
   name?: string
@@ -74,6 +76,22 @@ app.whenReady().then(() => {
       global.mainWindow.show()
     }
   })
+})
+
+ipcMain.handle('toggleSubtitleWindow', (_event, open: boolean) => {
+  if (open) {
+    if (!global.subtitleWindow || global.subtitleWindow.isDestroyed()) {
+      createSubtitleWindow()
+    } else {
+      showSubtitleWindow()
+    }
+    updateAppState({ subtitleWindowOpen: true })
+    return true
+  } else {
+    hideSubtitleWindow()
+    updateAppState({ subtitleWindowOpen: false })
+    return false
+  }
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common

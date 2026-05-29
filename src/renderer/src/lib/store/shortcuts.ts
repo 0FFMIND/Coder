@@ -40,6 +40,11 @@ const defaultShortcuts: Record<string, Omit<Shortcut, 'defaultKey'>> = {
     key: 'Alt+H',
     category: 'Window Management'
   },
+  toggleWindowCollapsed: {
+    action: 'toggleWindowCollapsed',
+    key: 'Alt+N',
+    category: 'Window Management'
+  },
   ignoreOrEnableMouse: {
     action: 'ignoreOrEnableMouse',
     key: 'Alt+M',
@@ -134,7 +139,7 @@ export const useShortcutsStore = create<ShortcutsStore>()(
     }),
     {
       name: 'interview-coder-shortcuts',
-      version: 8,
+      version: 9,
       migrate: (state: unknown) => {
         if (!isPersistedShortcutsState(state)) return state as ShortcutsStore
 

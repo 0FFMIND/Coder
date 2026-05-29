@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 
-ipcMain.handle('updateAppState', (_event, _state) => {
+export function updateAppState(_state: Partial<AppState>): void {
   Object.assign(state, _state)
 
   if ('ignoreMouse' in _state) {
@@ -10,11 +10,21 @@ ipcMain.handle('updateAppState', (_event, _state) => {
       mainWindow.webContents.send('sync-app-state', state)
     }
   }
+
+  const mainWindow = global.mainWindow
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('sync-app-state', state)
+  }
+}
+
+ipcMain.handle('updateAppState', (_event, _state) => {
+  updateAppState(_state)
 })
 
 export const state = {
   inCoderPage: false,
-  ignoreMouse: false
+  ignoreMouse: false,
+  subtitleWindowOpen: false
 }
 
 export type AppState = typeof state

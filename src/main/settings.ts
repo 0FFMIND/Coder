@@ -11,9 +11,30 @@ ipcMain.handle('getAppSettings', () => {
 })
 
 ipcMain.handle('updateAppSettings', (_event, _settings) => {
-  Object.assign(settings, _settings)
-  if ('autoTheme' in _settings && onAutoThemeChange) {
-    onAutoThemeChange(Boolean(_settings.autoTheme))
+  const changedSettings: Partial<AppSettings> = {}
+  for (const key of Object.keys(_settings) as (keyof AppSettings)[]) {
+    if (_settings[key] !== settings[key]) {
+      changedSettings[key] = _settings[key]
+    }
+  }
+
+  if (Object.keys(changedSettings).length === 0) {
+    return
+  }
+
+  Object.assign(settings, changedSettings)
+
+  if ('autoTheme' in changedSettings && onAutoThemeChange) {
+    onAutoThemeChange(Boolean(changedSettings.autoTheme))
+  }
+
+  const mainWindow = global.mainWindow
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('settings-updated', changedSettings)
+  }
+  const subtitleWindow = global.subtitleWindow
+  if (subtitleWindow && !subtitleWindow.isDestroyed()) {
+    subtitleWindow.webContents.send('settings-updated', changedSettings)
   }
 })
 

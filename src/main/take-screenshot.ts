@@ -28,7 +28,12 @@ export function takeScreenshot(): Promise<string | void> {
   const { width, height } = primaryDisplay.size
   const shouldCompress = shouldCompressScreenshotForModel(settings.model)
   const thumbnailSize = shouldCompress
-    ? getScaledSize(width, height, SMALL_VISION_MAX_SCREENSHOT_WIDTH, SMALL_VISION_MAX_SCREENSHOT_HEIGHT)
+    ? getScaledSize(
+        width,
+        height,
+        SMALL_VISION_MAX_SCREENSHOT_WIDTH,
+        SMALL_VISION_MAX_SCREENSHOT_HEIGHT
+      )
     : getScaledSize(width, height, DEFAULT_MAX_SCREENSHOT_WIDTH, DEFAULT_MAX_SCREENSHOT_HEIGHT)
 
   return desktopCapturer

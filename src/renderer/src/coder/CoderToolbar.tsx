@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageSquarePlus, Mic, MicOff, PlusCircle, Send } from 'lucide-react'
+import { MessageSquarePlus, Mic, MicOff, PlusCircle, Send, Subtitles } from 'lucide-react'
 import ShortcutRenderer from '@/components/ShortcutRenderer'
 import { useSettingsStore } from '@/lib/store/settings'
 import { useShortcutsStore } from '@/lib/store/shortcuts'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useSolutionStore } from '@/lib/store/solution'
+import { useAppStore } from '@/lib/store/app'
 import { startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
 import { Button } from '@/components/ui/button'
 import {
@@ -55,6 +56,7 @@ export function CoderToolbar() {
   const { isTranscribing, autoMode, setIsTranscribing, setAutoMode, transcriptionText, clearText } =
     useTranscriptionStore()
   const { setErrorMessage, screenshotData, solutionChunks } = useSolutionStore()
+  const { subtitleWindowOpen, setSubtitleWindowOpen } = useAppStore()
   const [showFollowUpDialog, setShowFollowUpDialog] = useState(false)
   const [followUpText, setFollowUpText] = useState('')
   const isSendingFollowUpRef = useRef(false)
@@ -166,6 +168,17 @@ export function CoderToolbar() {
     await window.api.updateAppSettings(getCloneableFields(useSettingsStore.getState()))
   }
 
+  const handleToggleSubtitle = async () => {
+    const nextState = !subtitleWindowOpen
+    try {
+      const result = await window.api.toggleSubtitleWindow(nextState)
+      setSubtitleWindowOpen(result)
+    } catch (err) {
+      console.error('Failed to toggle subtitle window:', err)
+      setErrorMessage('切换字幕窗口失败，请重试')
+    }
+  }
+
   const handleFollowUpClick = () => {
     setFollowUpText('')
     setShowFollowUpDialog(true)
@@ -249,7 +262,12 @@ export function CoderToolbar() {
       ref={toolbarRef}
       className="flex w-full max-w-full min-w-0 flex-col gap-1 overflow-x-hidden text-xs leading-none text-[var(--app-text)]"
     >
-      <div className={cn('flex items-center flex-nowrap overflow-x-hidden', compactLevel >= 2 ? 'gap-1.5' : 'gap-3')}>
+      <div
+        className={cn(
+          'flex items-center flex-nowrap overflow-x-hidden',
+          compactLevel >= 2 ? 'gap-1.5' : 'gap-3'
+        )}
+      >
         <div className={cn('flex items-center shrink-0', compactLevel >= 2 ? 'gap-1' : 'gap-2')}>
           {compactLevel === 0 && (
             <span className="text-[var(--app-toolbar-label-text)] shrink-0">常用快捷键</span>
@@ -293,7 +311,12 @@ export function CoderToolbar() {
         </div>
       </div>
 
-      <div className={cn('flex items-center flex-nowrap overflow-x-hidden', compactLevel >= 2 ? 'gap-1' : 'gap-2')}>
+      <div
+        className={cn(
+          'flex items-center flex-nowrap overflow-x-hidden',
+          compactLevel >= 2 ? 'gap-1' : 'gap-2'
+        )}
+      >
         {compactLevel === 0 && (
           <span className="text-[var(--app-toolbar-label-text)] shrink-0">模型</span>
         )}
@@ -336,7 +359,12 @@ export function CoderToolbar() {
         </div>
       </div>
 
-      <div className={cn('flex items-center flex-nowrap overflow-x-hidden', compactLevel >= 2 ? 'gap-1' : 'gap-2')}>
+      <div
+        className={cn(
+          'flex items-center flex-nowrap overflow-x-hidden',
+          compactLevel >= 2 ? 'gap-1' : 'gap-2'
+        )}
+      >
         <VoiceControls
           compactLevel={compactLevel}
           isTranscribing={isTranscribing}
@@ -344,6 +372,20 @@ export function CoderToolbar() {
           onToggleTranscription={handleToggleTranscription}
           onToggleAutoMode={() => setAutoMode(!autoMode)}
         />
+        <button
+          className={cn(
+            'flex items-center gap-1 rounded border py-0.5 text-xs transition-colors [-webkit-app-region:no-drag]! shrink-0 whitespace-nowrap',
+            compactLevel >= 3 ? 'px-1.5' : 'px-2',
+            subtitleWindowOpen
+              ? 'border-[var(--app-border)] bg-[var(--app-toolbar-active-bg)] text-[var(--app-toolbar-btn-text)]'
+              : 'border-current bg-transparent text-[var(--app-text)] hover:bg-[var(--app-toolbar-hover-bg)] hover:text-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))]'
+          )}
+          onClick={handleToggleSubtitle}
+          title={subtitleWindowOpen ? '关闭字幕窗口' : '开启字幕窗口'}
+        >
+          <Subtitles className="w-3 h-3" />
+          {compactLevel < 3 && <span>{subtitleWindowOpen ? '字幕开' : '字幕关'}</span>}
+        </button>
         <button
           className={cn(
             'flex items-center gap-1 rounded border border-current py-0.5 text-xs whitespace-nowrap transition-colors hover:bg-[var(--app-toolbar-hover-bg)] hover:text-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] hover:border-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))] [-webkit-app-region:no-drag]! shrink-0',
@@ -521,9 +563,8 @@ function ToolbarShortcut({
   hideAlt?: boolean
   onClick: () => void
 }) {
-  const displayShortcut = hideAlt && shortcut
-    ? shortcut.replace(/Alt\+|CommandOrControl\+/g, '')
-    : shortcut
+  const displayShortcut =
+    hideAlt && shortcut ? shortcut.replace(/Alt\+|CommandOrControl\+/g, '') : shortcut
   return (
     <button
       className={cn(

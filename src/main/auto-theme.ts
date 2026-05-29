@@ -90,9 +90,11 @@ function samplePixelFromImage(
   return count > 0 ? sum / count : -1
 }
 
-function nativeImageToImageData(
-  nativeImage: Electron.NativeImage
-): { data: Uint8ClampedArray; width: number; height: number } {
+function nativeImageToImageData(nativeImage: Electron.NativeImage): {
+  data: Uint8ClampedArray
+  width: number
+  height: number
+} {
   const bitmap = nativeImage.toBitmap()
   const size = nativeImage.getSize()
   return {
@@ -131,8 +133,7 @@ export async function sampleScreenBrightness(): Promise<number | null> {
 
       let source = sources.find(
         (s) =>
-          s.display_id &&
-          displays.find((d) => d.id.toString() === s.display_id)?.id === display.id
+          s.display_id && displays.find((d) => d.id.toString() === s.display_id)?.id === display.id
       )
 
       if (!source) {

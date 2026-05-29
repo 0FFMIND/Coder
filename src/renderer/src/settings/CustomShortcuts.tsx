@@ -61,6 +61,11 @@ export function CustomShortcuts() {
         <div className="space-y-2">
           <h3 className="text-sm text-[var(--app-text-muted)]">窗口管理</h3>
           <Shortcut label="隐藏/显示窗口" shortcut="hideOrShowMainWindow" />
+          <Shortcut
+            label="折叠/展开窗口"
+            description="折叠或展开窗口，与点击标题栏的 - 按钮功能相同"
+            shortcut="toggleWindowCollapsed"
+          />
         </div>
 
         {/* Screenshot & AI */}

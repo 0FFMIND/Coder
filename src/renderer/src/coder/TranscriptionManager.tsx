@@ -1,29 +1,24 @@
 import { useEffect, useRef } from 'react'
 import { useSettingsStore } from '@/lib/store/settings'
-import { useAppStore } from '@/lib/store/app'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useSolutionStore } from '@/lib/store/solution'
 import { startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
 
 export default function TranscriptionManager() {
   const { dashscopeApiKey, defaultAudioDeviceId } = useSettingsStore()
-  const { syncAppState } = useAppStore()
-  const {
-    isTranscribing,
-    setIsTranscribing,
-    setTranscriptionText,
-    clearText,
-    autoMode,
-    transcriptionText
-  } = useTranscriptionStore()
+  const { setIsTranscribing, setTranscriptionText, clearText, autoMode } = useTranscriptionStore()
   const { setErrorMessage } = useSolutionStore()
 
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoModeRef = useRef(autoMode)
   const isAutoSubmittingRef = useRef(false)
   const isStoppedByUserRef = useRef(false)
+  const dashscopeApiKeyRef = useRef(dashscopeApiKey)
+  const defaultAudioDeviceIdRef = useRef(defaultAudioDeviceId)
 
   autoModeRef.current = autoMode
+  dashscopeApiKeyRef.current = dashscopeApiKey
+  defaultAudioDeviceIdRef.current = defaultAudioDeviceId
 
   const clearSilenceTimer = () => {
     if (silenceTimerRef.current) {
@@ -67,27 +62,19 @@ export default function TranscriptionManager() {
   }, [])
 
   useEffect(() => {
-    window.api.onSyncAppState((state) => {
-      syncAppState(state)
-    })
-    return () => {
-      window.api.removeSyncAppStateListener()
-    }
-  }, [syncAppState])
-
-  useEffect(() => {
     const handleToggle = async () => {
-      if (isTranscribing) {
+      const currentState = useTranscriptionStore.getState()
+      if (currentState.isTranscribing) {
         stopAudioCapture()
         await window.api.stopTranscription()
       } else {
-        if (!dashscopeApiKey) {
+        if (!dashscopeApiKeyRef.current) {
           setErrorMessage('请先在设置中配置百炼平台 API Key')
           return
         }
         try {
-          await startAudioCapture(defaultAudioDeviceId || undefined)
-          await window.api.startTranscription(dashscopeApiKey)
+          await startAudioCapture(defaultAudioDeviceIdRef.current || undefined)
+          await window.api.startTranscription(dashscopeApiKeyRef.current)
           setIsTranscribing(true)
           setErrorMessage(null)
         } catch (err) {
@@ -109,24 +96,19 @@ export default function TranscriptionManager() {
       window.api.removeToggleTranscriptionListener()
       window.api.removeStopTranscriptionInputListener()
     }
-  }, [
-    isTranscribing,
-    transcriptionText,
-    clearText,
-    dashscopeApiKey,
-    defaultAudioDeviceId,
-    setIsTranscribing,
-    setErrorMessage
-  ])
+  }, [setIsTranscribing, setErrorMessage])
 
   useEffect(() => {
     window.api.onTranscriptionText((data) => {
       setTranscriptionText(data.text)
       if (autoModeRef.current && useTranscriptionStore.getState().isTranscribing) {
         clearSilenceTimer()
-        silenceTimerRef.current = setTimeout(() => {
-          submitTranscription({ keepTranscribing: true })
-        }, (useSettingsStore.getState().transcriptionAutoSubmitSeconds || 2) * 1000)
+        silenceTimerRef.current = setTimeout(
+          () => {
+            submitTranscription({ keepTranscribing: true })
+          },
+          (useSettingsStore.getState().transcriptionAutoSubmitSeconds || 2) * 1000
+        )
       }
     })
     window.api.onTranscriptionError((message) => {

@@ -3,7 +3,7 @@ import type { BrowserWindow, Rectangle } from 'electron'
 import type { ModelMessage } from 'ai'
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { applyContentProtection, ensureWindowExpanded } from './main-window'
+import { applyContentProtection, ensureWindowExpanded, toggleWindowCollapsed } from './main-window'
 import { takeScreenshot } from './take-screenshot'
 import { saveScreenshotToDisk } from './save-screenshot'
 import {
@@ -76,9 +76,11 @@ function extractErrorMessage(error: unknown): string {
   }
 
   // Handle image/vision unsupported errors
-  if (error.message.toLowerCase().includes('image') || 
-      error.message.toLowerCase().includes('vision') ||
-      error.message.toLowerCase().includes('不支持')) {
+  if (
+    error.message.toLowerCase().includes('image') ||
+    error.message.toLowerCase().includes('vision') ||
+    error.message.toLowerCase().includes('不支持')
+  ) {
     return '当前模型可能不支持图片输入，请切换到支持视觉的模型。'
   }
 
@@ -200,10 +202,7 @@ async function convertImagesToText(
 ): Promise<string> {
   logCoderPipeline('OCR stage started')
   if (!streamContext.controller.signal.aborted) {
-    send(
-      'solution-chunk',
-      '[Qwen Coder] 1/2 正在将截图转换为结构化文字...\n\n'
-    )
+    send('solution-chunk', '[Qwen Coder] 1/2 正在将截图转换为结构化文字...\n\n')
   }
 
   const ocrStream = getScreenshotTextStream(messages, streamContext.controller.signal)
@@ -216,18 +215,12 @@ async function convertImagesToText(
   logCoderPipeline(`OCR stage completed, ${ocrText.length} chars`)
   logCoderPipeline(`OCR text:\n${ocrText}`)
   if (!streamContext.controller.signal.aborted) {
-    send(
-      'solution-chunk',
-      '[Qwen Coder] OCR 完成，正在交给 qwen/qwen3-coder 生成结果...\n\n'
-    )
+    send('solution-chunk', '[Qwen Coder] OCR 完成，正在交给 qwen/qwen3-coder 生成结果...\n\n')
   }
   return ocrText
 }
 
-type StreamGetter = (
-  messages: ModelMessage[],
-  abortSignal: AbortSignal
-) => AsyncIterable<string>
+type StreamGetter = (messages: ModelMessage[], abortSignal: AbortSignal) => AsyncIterable<string>
 
 type StreamPreprocess = (
   messages: ModelMessage[],
@@ -565,19 +558,22 @@ const callbacks: Record<string, () => void> = {
 
       originalBaseMessages = [...conversationMessages]
 
-      const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
-        streamGetter: (messages, signal) => getSolutionStream(messages, signal),
-        mainWindow,
-        preprocess: async (messages, streamContext, sendCtx) => {
-          if (isCoderPipelineModel(settings.model)) {
-            const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
-            return toCoderTextMessages(ocrText, transcriptionText)
-          }
-          return messages
-        },
-        generation: myGeneration,
-        send
-      })
+      const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(
+        conversationMessages,
+        {
+          streamGetter: (messages, signal) => getSolutionStream(messages, signal),
+          mainWindow,
+          preprocess: async (messages, streamContext, sendCtx) => {
+            if (isCoderPipelineModel(settings.model)) {
+              const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
+              return toCoderTextMessages(ocrText, transcriptionText)
+            }
+            return messages
+          },
+          generation: myGeneration,
+          send
+        }
+      )
 
       if (isLatest) {
         conversationMessages = finalMessages
@@ -653,19 +649,22 @@ const callbacks: Record<string, () => void> = {
 
       originalBaseMessages = [...conversationMessages]
 
-      const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
-        streamGetter: (messages, signal) => getGeneralStream(messages, signal),
-        mainWindow,
-        preprocess: async (messages, streamContext, sendCtx) => {
-          if (isCoderPipelineModel(settings.model)) {
-            const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
-            return toCoderTextMessages(ocrText, transcriptionText)
-          }
-          return messages
-        },
-        generation: myGeneration,
-        send
-      })
+      const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(
+        conversationMessages,
+        {
+          streamGetter: (messages, signal) => getGeneralStream(messages, signal),
+          mainWindow,
+          preprocess: async (messages, streamContext, sendCtx) => {
+            if (isCoderPipelineModel(settings.model)) {
+              const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
+              return toCoderTextMessages(ocrText, transcriptionText)
+            }
+            return messages
+          },
+          generation: myGeneration,
+          send
+        }
+      )
 
       if (isLatest) {
         conversationMessages = finalMessages
@@ -754,6 +753,12 @@ const callbacks: Record<string, () => void> = {
     if (!mainWindow || mainWindow.isDestroyed() || !state.inCoderPage) return
     clearTranscriptionText()
     mainWindow.webContents.send('transcription-cleared')
+  },
+
+  toggleWindowCollapsed: () => {
+    const mainWindow = global.mainWindow
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    toggleWindowCollapsed()
   }
 }
 
@@ -874,15 +879,18 @@ ipcMain.handle('sendFollowUpQuestion', async (_event, question: string) => {
 
   originalBaseMessages = [...messagesForRetry]
 
-  const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
-    streamGetter: (messages, signal) =>
-      isNewConversation
-        ? getGeneralStream(messages, signal)
-        : getFollowUpStream(messages, question, signal),
-    mainWindow,
-    generation: myGeneration,
-    send
-  })
+  const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(
+    conversationMessages,
+    {
+      streamGetter: (messages, signal) =>
+        isNewConversation
+          ? getGeneralStream(messages, signal)
+          : getFollowUpStream(messages, question, signal),
+      mainWindow,
+      generation: myGeneration,
+      send
+    }
+  )
 
   if (isLatest) {
     lastBaseConversationMessages = [...messagesForRetry]
@@ -991,9 +999,8 @@ ipcMain.handle('resendWithNewModel', async () => {
   }
 
   const hasImages = (messages: ModelMessage[]) => {
-    return messages.some((msg) =>
-      Array.isArray(msg.content) &&
-      msg.content.some((part) => part.type === 'image')
+    return messages.some(
+      (msg) => Array.isArray(msg.content) && msg.content.some((part) => part.type === 'image')
     )
   }
 
@@ -1007,20 +1014,23 @@ ipcMain.handle('resendWithNewModel', async () => {
   const base = originalBaseMessages.length > 0 ? originalBaseMessages : lastBaseConversationMessages
   conversationMessages = [...base]
 
-  const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(conversationMessages, {
-    streamGetter: (messages, signal) => getGeneralStream(messages, signal),
-    mainWindow,
-    preprocess: async (messages, streamContext, sendCtx) => {
-      if (isCoderPipelineModel(settings.model) && hasImages(messages)) {
-        const transcriptionText = getTranscriptionText()
-        const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
-        return toCoderTextMessages(ocrText, transcriptionText)
-      }
-      return messages
-    },
-    generation: myGeneration,
-    send
-  })
+  const { finalMessages, assistantResponse, wasAborted, isLatest } = await runSolutionStream(
+    conversationMessages,
+    {
+      streamGetter: (messages, signal) => getGeneralStream(messages, signal),
+      mainWindow,
+      preprocess: async (messages, streamContext, sendCtx) => {
+        if (isCoderPipelineModel(settings.model) && hasImages(messages)) {
+          const transcriptionText = getTranscriptionText()
+          const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
+          return toCoderTextMessages(ocrText, transcriptionText)
+        }
+        return messages
+      },
+      generation: myGeneration,
+      send
+    }
+  )
 
   if (isLatest) {
     conversationMessages = finalMessages
