@@ -7,9 +7,10 @@ import ShortcutRenderer from '@/components/ShortcutRenderer'
 export function AppContent() {
   const { screenshotData, solutionChunks, errorMessage, recentScreenshots, setErrorMessage } =
     useSolutionStore()
-  const { isTranscribing, transcriptionText } = useTranscriptionStore()
+  const { isTranscribing, transcriptionText, subtitleMode, voiceTranscriptionMode } = useTranscriptionStore()
 
-  const hasTranscriptionContent = isTranscribing || transcriptionText.trim().length > 0
+  const isSubtitleOnlyMode = subtitleMode && !voiceTranscriptionMode
+  const hasTranscriptionContent = !isSubtitleOnlyMode && (isTranscribing || transcriptionText.trim().length > 0)
   const hasSolutionContent = solutionChunks.join('').trim().length > 0
 
   return (

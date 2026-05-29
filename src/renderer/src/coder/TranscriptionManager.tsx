@@ -6,7 +6,14 @@ import { startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
 
 export default function TranscriptionManager() {
   const { dashscopeApiKey, defaultAudioDeviceId } = useSettingsStore()
-  const { setIsTranscribing, setTranscriptionText, clearText, autoMode } = useTranscriptionStore()
+  const {
+    setIsTranscribing,
+    setTranscriptionText,
+    clearText,
+    autoMode,
+    setSubtitleMode,
+    setVoiceTranscriptionMode
+  } = useTranscriptionStore()
   const { setErrorMessage } = useSolutionStore()
 
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -62,20 +69,45 @@ export default function TranscriptionManager() {
   }, [])
 
   useEffect(() => {
+    const sendTranscriptionText = async () => {
+      const text = useTranscriptionStore.getState().transcriptionText.trim()
+      if (!text) return
+      clearText()
+      await window.api.clearTranscriptionText()
+      try {
+        const result = await window.api.sendFollowUpQuestion(text)
+        if (result && !result.success) {
+          setErrorMessage(`语音转录提交失败：${result.error}`)
+        }
+      } catch (err) {
+        console.error('Failed to send transcription as follow-up:', err)
+        setErrorMessage('语音转录提交失败，请重试')
+      }
+    }
+
     const handleToggle = async () => {
       const currentState = useTranscriptionStore.getState()
-      if (currentState.isTranscribing) {
-        stopAudioCapture()
-        await window.api.stopTranscription()
+      if (currentState.voiceTranscriptionMode) {
+        setVoiceTranscriptionMode(false)
+        await window.api.updateAppState({ voiceTranscriptionMode: false })
+        await sendTranscriptionText()
+        if (!useTranscriptionStore.getState().subtitleMode) {
+          stopAudioCapture()
+          await window.api.stopTranscription()
+        }
       } else {
         if (!dashscopeApiKeyRef.current) {
           setErrorMessage('请先在设置中配置百炼平台 API Key')
           return
         }
         try {
-          await startAudioCapture(defaultAudioDeviceIdRef.current || undefined)
-          await window.api.startTranscription(dashscopeApiKeyRef.current)
-          setIsTranscribing(true)
+          if (!useTranscriptionStore.getState().isTranscribing) {
+            await startAudioCapture(defaultAudioDeviceIdRef.current || undefined)
+            await window.api.startTranscription(dashscopeApiKeyRef.current)
+            setIsTranscribing(true)
+          }
+          setVoiceTranscriptionMode(true)
+          await window.api.updateAppState({ voiceTranscriptionMode: true })
           setErrorMessage(null)
         } catch (err) {
           console.error('Failed to start transcription:', err)
@@ -85,7 +117,20 @@ export default function TranscriptionManager() {
       }
     }
 
+    const handleSubtitleWindowClosed = () => {
+      const currentState = useTranscriptionStore.getState()
+      if (currentState.subtitleMode) {
+        setSubtitleMode(false)
+        void window.api.updateAppState({ subtitleMode: false })
+        if (!useTranscriptionStore.getState().voiceTranscriptionMode) {
+          stopAudioCapture()
+          void window.api.stopTranscription()
+        }
+      }
+    }
+
     window.api.onToggleTranscription(handleToggle)
+    window.api.onSubtitleWindowClosed(handleSubtitleWindowClosed)
     window.api.onStopTranscriptionInput(() => {
       if (!useTranscriptionStore.getState().isTranscribing) return
       isStoppedByUserRef.current = true
@@ -94,14 +139,16 @@ export default function TranscriptionManager() {
     })
     return () => {
       window.api.removeToggleTranscriptionListener()
+      window.api.removeSubtitleWindowClosedListener()
       window.api.removeStopTranscriptionInputListener()
     }
-  }, [setIsTranscribing, setErrorMessage])
+  }, [setIsTranscribing, setErrorMessage, setSubtitleMode, setVoiceTranscriptionMode, clearText])
 
   useEffect(() => {
     window.api.onTranscriptionText((data) => {
       setTranscriptionText(data.text)
-      if (autoModeRef.current && useTranscriptionStore.getState().isTranscribing) {
+      const state = useTranscriptionStore.getState()
+      if (autoModeRef.current && state.isTranscribing && state.voiceTranscriptionMode) {
         clearSilenceTimer()
         silenceTimerRef.current = setTimeout(
           () => {
@@ -117,10 +164,22 @@ export default function TranscriptionManager() {
       stopAudioCapture()
     })
     window.api.onTranscriptionStopped(() => {
+      const currentState = useTranscriptionStore.getState()
+      const wasVoiceMode = currentState.voiceTranscriptionMode
       setIsTranscribing(false)
-      if (!isAutoSubmittingRef.current && !isStoppedByUserRef.current) {
+      setVoiceTranscriptionMode(false)
+      setSubtitleMode(false)
+      void window.api.updateAppState({
+        voiceTranscriptionMode: false,
+        subtitleMode: false
+      })
+      if (
+        !isAutoSubmittingRef.current &&
+        !isStoppedByUserRef.current &&
+        wasVoiceMode
+      ) {
         isStoppedByUserRef.current = true
-        const text = useTranscriptionStore.getState().transcriptionText
+        const text = currentState.transcriptionText
         if (text) {
           submitTranscription()
         } else {
@@ -138,7 +197,7 @@ export default function TranscriptionManager() {
       window.api.removeTranscriptionStoppedListener()
       window.api.removeTranscriptionClearedListener()
     }
-  }, [setTranscriptionText, setErrorMessage, setIsTranscribing, clearText])
+  }, [setTranscriptionText, setErrorMessage, setIsTranscribing, clearText, setVoiceTranscriptionMode, setSubtitleMode])
 
   useEffect(() => {
     return () => {

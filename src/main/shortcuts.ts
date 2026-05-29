@@ -524,7 +524,7 @@ const callbacks: Record<string, () => void> = {
     if (!isCurrentGeneration(myGeneration)) return
     if (screenshotData && mainWindow && !mainWindow.isDestroyed()) {
       saveScreenshotToDisk(screenshotData)
-      const transcriptionText = getTranscriptionText()
+      const transcriptionText = state.voiceTranscriptionMode ? getTranscriptionText() : ''
       if (transcriptionText) {
         clearTranscriptionText()
         send('transcription-cleared')
@@ -614,7 +614,7 @@ const callbacks: Record<string, () => void> = {
     if (!isCurrentGeneration(myGeneration)) return
     if (screenshotData && mainWindow && !mainWindow.isDestroyed()) {
       saveScreenshotToDisk(screenshotData)
-      const transcriptionText = getTranscriptionText()
+      const transcriptionText = state.voiceTranscriptionMode ? getTranscriptionText() : ''
       if (transcriptionText) {
         clearTranscriptionText()
         send('transcription-cleared')
@@ -1021,7 +1021,7 @@ ipcMain.handle('resendWithNewModel', async () => {
       mainWindow,
       preprocess: async (messages, streamContext, sendCtx) => {
         if (isCoderPipelineModel(settings.model) && hasImages(messages)) {
-          const transcriptionText = getTranscriptionText()
+          const transcriptionText = state.voiceTranscriptionMode ? getTranscriptionText() : ''
           const ocrText = await convertImagesToText(messages, streamContext, sendCtx)
           return toCoderTextMessages(ocrText, transcriptionText)
         }

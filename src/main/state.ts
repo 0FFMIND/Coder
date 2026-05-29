@@ -24,7 +24,9 @@ ipcMain.handle('updateAppState', (_event, _state) => {
 export const state = {
   inCoderPage: false,
   ignoreMouse: false,
-  subtitleWindowOpen: false
+  subtitleWindowOpen: false,
+  subtitleMode: false,
+  voiceTranscriptionMode: false
 }
 
 export type AppState = typeof state

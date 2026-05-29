@@ -11,7 +11,7 @@ import { stopAudioCapture } from '@/lib/audio-capture'
 export function AppStatusBar() {
   const { isLoading: isReceivingSolution, setIsLoading, setErrorMessage } = useSolutionStore()
   const { shortcuts } = useShortcutsStore()
-  const { isTranscribing, transcriptionText, clearText } = useTranscriptionStore()
+  const { isTranscribing, transcriptionText, clearText, subtitleMode, voiceTranscriptionMode } = useTranscriptionStore()
   const trimmedTranscription = transcriptionText.trim()
   const isSubmittingRef = useRef(false)
 
@@ -54,7 +54,8 @@ export function AppStatusBar() {
     }
   }
 
-  const hasTranscription = isTranscribing || trimmedTranscription
+  const isSubtitleOnlyMode = subtitleMode && !voiceTranscriptionMode
+  const hasTranscription = !isSubtitleOnlyMode && (isTranscribing || trimmedTranscription)
 
   return (
     <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center w-full bg-transparent px-4 pb-1 pointer-events-none">

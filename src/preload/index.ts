@@ -174,6 +174,12 @@ const api = {
   // Subtitle window
   toggleSubtitleWindow: (open: boolean) =>
     ipcRenderer.invoke('toggleSubtitleWindow', open) as Promise<boolean>,
+  onSubtitleWindowClosed: (callback: () => void) => {
+    ipcRenderer.on('subtitle-window-closed', callback)
+  },
+  removeSubtitleWindowClosedListener: () => {
+    ipcRenderer.removeAllListeners('subtitle-window-closed')
+  },
 
   // Transcription
   startTranscription: (apiKey: string) => ipcRenderer.invoke('start-transcription', apiKey),

@@ -53,8 +53,18 @@ export function CoderToolbar() {
     autoTheme
   } = useSettingsStore()
   const { shortcuts } = useShortcutsStore()
-  const { isTranscribing, autoMode, setIsTranscribing, setAutoMode, transcriptionText, clearText } =
-    useTranscriptionStore()
+  const {
+    isTranscribing,
+    autoMode,
+    setIsTranscribing,
+    setAutoMode,
+    transcriptionText,
+    clearText,
+    subtitleMode,
+    voiceTranscriptionMode,
+    setSubtitleMode,
+    setVoiceTranscriptionMode
+  } = useTranscriptionStore()
   const { setErrorMessage, screenshotData, solutionChunks } = useSolutionStore()
   const { subtitleWindowOpen, setSubtitleWindowOpen } = useAppStore()
   const [showFollowUpDialog, setShowFollowUpDialog] = useState(false)
@@ -112,35 +122,62 @@ export function CoderToolbar() {
     }
   }
 
-  const handleToggleTranscription = async () => {
-    if (isTranscribing) {
+  const startTranscriptionIfNeeded = async () => {
+    if (isTranscribing) return true
+    if (!dashscopeApiKey) {
+      setErrorMessage('请先在设置中配置百炼平台 API Key')
+      return false
+    }
+    try {
+      await startAudioCapture(defaultAudioDeviceId || undefined)
+      await window.api.startTranscription(dashscopeApiKey)
+      setIsTranscribing(true)
+      setErrorMessage(null)
+      return true
+    } catch (err) {
+      console.error('Failed to start transcription:', err)
       stopAudioCapture()
-      await window.api.stopTranscription()
-      setIsTranscribing(false)
-      const text = transcriptionText.trim()
-      if (text) {
-        clearText()
-        try {
-          await window.api.sendFollowUpQuestion(text)
-        } catch (err) {
-          console.error('Failed to send transcription as follow-up:', err)
-          setErrorMessage('语音转录提交失败，请重试')
-        }
+      setErrorMessage('启动语音转录失败，请检查系统音频权限')
+      return false
+    }
+  }
+
+  const stopTranscriptionIfNeeded = async () => {
+    if (!isTranscribing) return
+    stopAudioCapture()
+    await window.api.stopTranscription()
+    setIsTranscribing(false)
+  }
+
+  const sendTranscriptionText = async () => {
+    const text = transcriptionText.trim()
+    if (!text) return
+    clearText()
+    await window.api.clearTranscriptionText()
+    try {
+      const result = await window.api.sendFollowUpQuestion(text)
+      if (result && !result.success) {
+        setErrorMessage(`语音转录提交失败：${result.error}`)
+      }
+    } catch (err) {
+      console.error('Failed to send transcription as follow-up:', err)
+      setErrorMessage('语音转录提交失败，请重试')
+    }
+  }
+
+  const handleToggleTranscription = async () => {
+    if (voiceTranscriptionMode) {
+      setVoiceTranscriptionMode(false)
+      await window.api.updateAppState({ voiceTranscriptionMode: false })
+      await sendTranscriptionText()
+      if (!subtitleMode) {
+        await stopTranscriptionIfNeeded()
       }
     } else {
-      if (!dashscopeApiKey) {
-        setErrorMessage('请先在设置中配置百炼平台 API Key')
-        return
-      }
-      try {
-        await startAudioCapture(defaultAudioDeviceId || undefined)
-        await window.api.startTranscription(dashscopeApiKey)
-        setIsTranscribing(true)
-        setErrorMessage(null)
-      } catch (err) {
-        console.error('Failed to start transcription:', err)
-        stopAudioCapture()
-        setErrorMessage('启动语音转录失败，请检查系统音频权限')
+      const started = await startTranscriptionIfNeeded()
+      if (started) {
+        setVoiceTranscriptionMode(true)
+        await window.api.updateAppState({ voiceTranscriptionMode: true })
       }
     }
   }
@@ -173,6 +210,17 @@ export function CoderToolbar() {
     try {
       const result = await window.api.toggleSubtitleWindow(nextState)
       setSubtitleWindowOpen(result)
+      if (result) {
+        setSubtitleMode(true)
+        await window.api.updateAppState({ subtitleMode: true })
+        await startTranscriptionIfNeeded()
+      } else {
+        setSubtitleMode(false)
+        await window.api.updateAppState({ subtitleMode: false })
+        if (!voiceTranscriptionMode) {
+          await stopTranscriptionIfNeeded()
+        }
+      }
     } catch (err) {
       console.error('Failed to toggle subtitle window:', err)
       setErrorMessage('切换字幕窗口失败，请重试')
@@ -367,6 +415,7 @@ export function CoderToolbar() {
       >
         <VoiceControls
           compactLevel={compactLevel}
+          voiceTranscriptionMode={voiceTranscriptionMode}
           isTranscribing={isTranscribing}
           autoMode={autoMode}
           onToggleTranscription={handleToggleTranscription}
@@ -480,12 +529,14 @@ export function CoderToolbar() {
 
 function VoiceControls({
   compactLevel,
+  voiceTranscriptionMode,
   isTranscribing,
   autoMode,
   onToggleTranscription,
   onToggleAutoMode
 }: {
   compactLevel: CompactLevel
+  voiceTranscriptionMode: boolean
   isTranscribing: boolean
   autoMode: boolean
   onToggleTranscription: () => void
@@ -500,21 +551,21 @@ function VoiceControls({
         className={cn(
           'flex items-center gap-1 rounded border py-0.5 text-xs transition-colors [-webkit-app-region:no-drag]! shrink-0',
           compactLevel >= 3 ? 'px-1.5' : 'px-2',
-          isTranscribing
+          voiceTranscriptionMode
             ? 'border-[var(--app-border)] bg-[var(--app-toolbar-active-bg)] text-[var(--app-toolbar-btn-text)]'
             : 'border-current bg-transparent text-[var(--app-text)] hover:bg-[var(--app-toolbar-hover-bg)] hover:text-[var(--app-toolbar-hover-text,var(--app-toolbar-btn-text))]'
         )}
         onClick={onToggleTranscription}
-        title={isTranscribing ? '点击关闭语音转录' : '点击开启语音转录'}
+        title={voiceTranscriptionMode ? '点击关闭语音转录并发送' : '点击开启语音转录'}
       >
-        {isTranscribing ? (
+        {voiceTranscriptionMode ? (
           <>
-            <Mic className="w-3 h-3" />
+            <Mic className={`w-3 h-3 ${isTranscribing ? 'text-red-400 animate-pulse' : ''}`} />
             {compactLevel < 3 && <span>on</span>}
           </>
         ) : (
           <>
-            <MicOff className="w-3 h-3" />
+            <MicOff className={`w-3 h-3 ${isTranscribing ? 'text-amber-400' : ''}`} />
             {compactLevel < 3 && <span>off</span>}
           </>
         )}

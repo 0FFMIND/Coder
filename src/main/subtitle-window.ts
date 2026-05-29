@@ -56,6 +56,10 @@ export function createSubtitleWindow(): void {
 
   subtitleWindow.on('closed', () => {
     global.subtitleWindow = null
+    const mainWindow = global.mainWindow
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('subtitle-window-closed')
+    }
   })
 }
 
